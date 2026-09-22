@@ -261,6 +261,20 @@ def text_band(text, font_render, color=3, bg=0, width_mt=None):
     return img
 
 
+def fence():
+    """dark wooden fence on grass (the zoo boundary)"""
+    m = [row[:] for row in GRASS]
+    for x in range(16):
+        m[5][x] = m[6][x] = 2
+        m[10][x] = m[11][x] = 2
+        m[4][x] = m[9][x] = 3
+    for x0 in (1, 9):
+        for y in range(2, 15):
+            for x in range(x0, x0 + 4):
+                m[y][x] = 3 if x in (x0, x0 + 3) or y in (2, 14) else 1
+    return m
+
+
 def neon_door():
     m = fill(0)
     for y in range(2, 16):

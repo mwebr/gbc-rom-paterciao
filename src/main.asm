@@ -1,8 +1,8 @@
 ; ENKA @ Ballhaus West -- Game Boy Color promo cartridge
 ; 32 KiB ROM, no MBC, CGB only. Build with ./build.sh (RGBDS 1.0).
 ;
-; Flow: title -> setup (start time, DJs, scratch practice) -> loading ->
-;       bike ride through Karlsruhe to Ballhaus West @ Europaplatz -> ending
+; Flow: title -> DJ booking -> crate digging -> loading -> bike ride from
+;       Karlsruhe Hbf to Ballhaus West -> inside: tech setup at the decks -> ending
 
 INCLUDE "hardware.inc"
 INCLUDE "gfx_defs.inc"
@@ -16,10 +16,12 @@ DEF KICK_FREQ  EQU $700
 
 DEF SCR_TITLE   EQU 0
 DEF SCR_DJS     EQU 1
-DEF SCR_SCRATCH EQU 2
+DEF SCR_CRATES  EQU 2
 DEF SCR_LOADING EQU 3
 DEF SCR_MAP     EQU 4
-DEF SCR_END     EQU 5
+DEF SCR_CLUB    EQU 5
+DEF SCR_SCRATCH EQU 6
+DEF SCR_END     EQU 7
 
 DEF PADB_A      EQU 0
 DEF PADB_B      EQU 1
@@ -42,8 +44,6 @@ DEF TB_TYPE   EQU 2
 DEF TB_MORE   EQU 3
 DEF TB_END    EQU 4
 
-DEF NUM_DJS      EQU 5
-DEF DJS_REAL     EQU %00101     ; SIMA (0) + PATER JOAO (2)
 DEF SCRATCH_GOAL EQU 8
 
 DEF COL_GREY     EQU (22 << 10) | (15 << 5) | 13
@@ -535,6 +535,38 @@ LoadOwTiles:
     ld hl, OwTiles
     ld bc, OwTilesEnd - OwTiles
     jr LoadBank1
+
+LoadAvatars:
+    ld a, 4
+    ld hl, AvatarTiles
+    ld bc, AvatarTilesEnd - AvatarTiles
+    jr LoadBank1Set
+LoadCrates:
+    ld a, 5
+    ld hl, CrateTiles
+    ld bc, CrateTilesEnd - CrateTiles
+    jr LoadBank1Set
+LoadClub:
+    ld a, 6
+    ld hl, ClubTiles
+    ld bc, ClubTilesEnd - ClubTiles
+; a = set id, hl = tiles (tile-set bank), bc = size
+LoadBank1Set:
+    ld d, a
+    ld a, [wBank1Set]
+    cp d
+    ret z
+    ld a, d
+    ld [wBank1Set], a
+    jr LoadBank1
+
+; a = ROM bank, hl = src, de = map address, b = width, c = height
+CopyRectBank:
+    ld [rROMB0], a
+    call CopyRect
+    ld a, 1
+    ld [rROMB0], a
+    ret
 
 LoadEndTiles:
     ld a, [wBank1Set]
@@ -1186,6 +1218,7 @@ ScreenReset:
     ld [wSCY], a
     ld [wRedraw], a
     ld [wStreamMode], a
+    ld [wNoFlash], a
     ld a, WIN_Y
     ld [wWinY], a
     ld a, 1
@@ -1193,9 +1226,9 @@ ScreenReset:
     ret
 
 InitTable:
-    dw TitleInit, DjsInit, ScratchInit, LoadingInit, MapInit, EndInit
+    dw TitleInit, DjsInit, CratesInit, LoadingInit, MapInit, ClubInit, ScratchInit, EndInit
 UpdateTable:
-    dw TitleUpdate, DjsUpdate, ScratchUpdate, LoadingUpdate, MapUpdate, EndUpdate
+    dw TitleUpdate, DjsUpdate, CratesUpdate, LoadingUpdate, MapUpdate, ClubUpdate, ScratchUpdate, EndUpdate
 
 ; Every non-map screen: frame counter, beat flash on the background, borders.
 CommonUpdate:
@@ -1207,6 +1240,10 @@ CommonUpdate:
     dec a
     ld [wBeatFlash], a
 .noDecay:
+    ld a, [wNoFlash]        ; screens with pictures keep their backgrounds
+    and a
+    jr nz, .borders
+    ld a, [wBeatFlash]
     ld hl, FlashTab
     call GetWord
     ld hl, wBasePal
@@ -1221,6 +1258,7 @@ CommonUpdate:
     dec d
     jr nz, .pal
 
+.borders:
     ; scroll the checkered borders in opposite directions
     ld a, [wFrame]
     srl a
@@ -1320,28 +1358,26 @@ InitSparkles:
     ret
 
 ; ==========================================================================
-; Title
+; Title: animated ENKA logo + PRESS START in the big yellow font
 ; ==========================================================================
+DEF TITLE_LOGO_ROW EQU 4
+DEF TITLE_MARQ_ROW EQU 11
+
 TitleInit:
     call LoadBigFont
     call LoadLogo
     ld hl, LogoMap
-    ld de, _SCRN0 + 2 * 32 + 2
+    ld de, _SCRN0 + TITLE_LOGO_ROW * 32 + 2
     ld bc, (16 << 8) | 4
     call CopyRect
     ld a, 1
-    ld de, _SCRN0 + 2 * 32 + 2
+    ld de, _SCRN0 + TITLE_LOGO_ROW * 32 + 2
     ld bc, (16 << 8) | 4
     call SetAttrRect
 
-    DRAW StrVenue, 7, 2
-    DRAW StrDateTime, 9, 0, 3, 20
-    DRAW StrPressStart, 11, 4, 5, 11
-    DRAW StrLineupTBA, 16, 4, 2, 12
-
     ; marquee rows use the 2x font from VRAM bank 1
     ld a, $08 | 4
-    ld de, _SCRN0 + 13 * 32
+    ld de, _SCRN0 + TITLE_MARQ_ROW * 32
     ld bc, (32 << 8) | 2
     call SetAttrRect
     ld a, 255
@@ -1352,7 +1388,7 @@ TitleInit:
     ld [wMarqPtr + 1], a
 
     ld bc, (24 << 8) | 127
-    ld de, (12 << 8) | 31
+    ld de, ((TITLE_LOGO_ROW * 8 - 4) << 8) | 31
     jp InitSparkles
 
 TitleUpdate:
@@ -1371,32 +1407,14 @@ TitleUpdate:
     ld a, SCR_DJS
     jp RequestScreen
 .noInput:
+    ld hl, wScxTable + TITLE_LOGO_ROW * 8
+    call LogoWave
 
-    ; wavy logo (lines 16-47)
-    ld a, [wFrame]
-    add a, a
-    add a, a
-    ld c, a
-    ld hl, wScxTable + 16
-    ld b, 32
-    ld d, HIGH(SineTab)
-.wave:
-    ld e, c
-    ld a, [de]
-    sra a
-    sra a
-    ld [hl+], a
-    ld a, c
-    add a, 3
-    ld c, a
-    dec b
-    jr nz, .wave
-
-    ; marquee (lines 104-119)
+    ; marquee
     ld a, [wMarqScx]
     inc a
     ld [wMarqScx], a
-    ld hl, wScxTable + 104
+    ld hl, wScxTable + TITLE_MARQ_ROW * 8
     ld b, 16
     call FillBytes
     ld a, [wMarqScx]
@@ -1408,7 +1426,7 @@ TitleUpdate:
     rrca
     add a, 20
     and 31
-    ld hl, _SCRN0 + 13 * 32
+    ld hl, _SCRN0 + TITLE_MARQ_ROW * 32
     ADD_HL_A
     ld d, h
     ld e, l
@@ -1430,70 +1448,137 @@ TitleUpdate:
     ld a, b
     call QueueBig
 .noMarq:
-
     ld a, [wFrame]
     srl a
     srl a
     ld e, a
     ld a, 1
     call RainbowPal
-
-    ; blinking PRESS START
-    ld a, [wFrame]
-    and 32
-    ld bc, $7FFF
-    jr z, .blinkOn
-    ld hl, wBasePal + 5 * 8 ; hide: text colour = background colour
-    ld c, [hl]
-    inc l
-    ld b, [hl]
-.blinkOn:
-    ld a, 5 * 4 + 3
-    call SetPalColor
-
     jp UpdateSparkles
 
-; ==========================================================================
-; Setup 1/2: book the DJs
-; ==========================================================================
-DjsInit:
-    DRAW StrSetup2, 1, 2, 4, 16
-    DRAW StrBookDjs, 2, 3
-    DRAW StrBooked, 9, 4
-    DRAW StrDjHint, 11, 2
-    ; list rows 4-8, one palette each
-    ld hl, DjNames
-    ld de, _SCRN0 + 4 * 32 + 4
-    ld c, 0
-.row:
-    push bc
-    push de
-    call DrawText
-    pop de
-    push hl
+; hl -> first SCX table entry of the 32 logo lines: gentle wave
+LogoWave:
+    ld a, [wFrame]
+    add a, a
+    add a, a
+    ld c, a
+    ld b, 32
+    ld d, HIGH(SineTab)
+.wave:
+    ld e, c
+    ld a, [de]
+    sra a
+    sra a
+    ld [hl+], a
     ld a, c
-    ld hl, RowPal
-    ADD_HL_A
-    ld a, [hl]
-    ld bc, (15 << 8) | 1
+    add a, 3
+    ld c, a
+    dec b
+    jr nz, .wave
+    ret
+
+; de = map address, b = first tile, c = attribute: 4x4 consecutive tiles (LCD off)
+DrawBlock4:
     push de
-    call SetAttrRect
+    ld h, 4
+.row:
+    REPT 4
+        ld a, b
+        ld [de], a
+        inc de
+        inc b
+    ENDR
+    ld a, e
+    add a, 28
+    ld e, a
+    adc a, d
+    sub e
+    ld d, a
+    dec h
+    jr nz, .row
     pop de
-    pop hl
-    NEXT_ROW_DE
+    ld a, c
+    ld bc, (4 << 8) | 4
+    jp SetAttrRect
+
+; de = map address, b = first tile: queue a 4x4 block of tiles (bank 0 map)
+QueueBlock4:
+    ld c, 4
+.row:
+    REPT 4
+        ld a, b
+        call QueueWrite
+        inc de
+        inc b
+    ENDR
+    ld a, e
+    add a, 28
+    ld e, a
+    adc a, d
+    sub e
+    ld d, a
+    dec c
+    jr nz, .row
+    ret
+
+; ==========================================================================
+; Setup 1/2: book three DJs (portrait grid, 3 x 2)
+; ==========================================================================
+DEF NUM_DJS  EQU 6
+DEF DJS_REAL EQU %010101        ; SIMA (0), PATER (2), JOAO (4)
+
+DjsInit:
+    call LoadAvatars
+    ld a, 1
+    ld [wNoFlash], a
+    ld hl, DjPalettes
+    ld de, wBasePal
+    ld bc, 128
+    call MemCopy
+    DRAW StrPickDjs, 1, 3, 7, 14
+    DRAW StrBooked3, 16, 5
+    ld c, 0
+.portrait:
+    push bc
+    ld a, c
+    ld hl, DjCellMap
+    call GetWord            ; bc = map address
+    ld d, b
+    ld e, c
+    pop bc
+    push bc
+    ld a, c
+    swap a                  ; first tile = index * 16
+    ld b, a
+    ld a, c
+    inc a
+    or $08                  ; palette 1-6, VRAM bank 1
+    ld c, a
+    call DrawBlock4
     pop bc
     inc c
     ld a, c
     cp NUM_DJS
-    jr nz, .row
+    jr nz, .portrait
     xor a
     ld [wDjSel], a
     ld [wDjMask], a
     ld [wDjsDone], a
-    ret
+    call DjNameText
+    ld de, _SCRN0 + 14 * 32 + 1
+    jp DrawText
 
-RowPal:
-    db 1, 2, 3, 5, 7
+; -> hl = padded name of the selected DJ (19 bytes each)
+DjNameText:
+    ld a, [wDjSel]
+    ld b, a
+    swap a
+    add a, b
+    add a, b
+    add a, b                ; * 19
+    ld hl, DjNamesPadded
+    ADD_HL_A
+    ret
 
 DjsUpdate:
     call CommonUpdate
@@ -1507,7 +1592,7 @@ DjsUpdate:
     ld a, [wDjsDone]
     and a
     jr z, .notDone
-    ld a, SCR_SCRATCH
+    ld a, SCR_CRATES
     jp RequestScreen
 .notDone:
     ld a, [wDjMask]
@@ -1522,32 +1607,52 @@ DjsUpdate:
 .input:
     ldh a, [hJoyPressed]
     ld b, a
+    ld a, [wDjSel]
+    ld c, a
+    bit PADB_RIGHT, b
+    jr z, .notRight
+    cp 2
+    jr z, .notRight
+    cp 5
+    jr z, .notRight
+    inc c
+.notRight:
+    bit PADB_LEFT, b
+    jr z, .notLeft
+    and a
+    jr z, .notLeft
+    cp 3
+    jr z, .notLeft
+    dec c
+.notLeft:
     bit PADB_DOWN, b
     jr z, .notDown
-    ld a, [wDjSel]
-    inc a
-    cp NUM_DJS
-    jr c, .setSel
-    xor a
-    jr .setSel
+    cp 3
+    jr nc, .notDown
+    add a, 3
+    ld c, a
 .notDown:
     bit PADB_UP, b
     jr z, .notUp
+    cp 3
+    jr c, .notUp
+    sub 3
+    ld c, a
+.notUp:
     ld a, [wDjSel]
-    dec a
-    cp NUM_DJS
-    jr c, .setSel
-    ld a, NUM_DJS - 1
-.setSel:
+    cp c
+    jr z, .noMove
+    ld a, c
     ld [wDjSel], a
     call SfxMove
-    jr .draw
-.notUp:
-    ld a, b
+    call DjNameText
+    ld de, _SCRN0 + 14 * 32 + 1
+    call QueueText
+.noMove:
+    ldh a, [hJoyPressed]
     and (1 << PADB_A) | (1 << PADB_START)
     jr z, .draw
     call SfxSelect
-    ; bit for this DJ
     ld a, [wDjSel]
     ld c, a
     ld b, 1
@@ -1560,7 +1665,7 @@ DjsUpdate:
 .gotBit:
     ld a, b
     and DJS_REAL
-    jr z, .reply            ; joke candidates just get a reply
+    jr z, .reply            ; the big names politely decline
     ld a, [wDjMask]
     and b
     ld hl, TxtAlready
@@ -1568,24 +1673,19 @@ DjsUpdate:
     ld a, [wDjMask]
     or b
     ld [wDjMask], a
-    ; heart next to the name + counter
-    ld a, [wDjSel]
-    swap a
-    add a, a                ; * 32
-    ld hl, _SCRN0 + 4 * 32 + 17
-    ADD_HL_A
-    ld d, h
-    ld e, l
-    ld a, CH_HEART
-    call QueueWrite
-    ld a, [wDjMask]
-    ld b, CH_0 + 1
-    cp DJS_REAL
-    jr nz, .count
-    inc b
+    ; booked counter
+    ld c, CH_0
+    ld b, 3
 .count:
-    ld a, b
-    ld de, _SCRN0 + 9 * 32 + 12
+    rrca
+    jr nc, .skipBit
+    inc c
+.skipBit:
+    rrca
+    dec b
+    jr nz, .count
+    ld a, c
+    ld de, _SCRN0 + 16 * 32 + 13
     call QueueWrite
 .reply:
     ld a, [wDjSel]
@@ -1597,77 +1697,400 @@ DjsUpdate:
     call OpenText
 
 .draw:
+    ; selection frame: 4 corner sprites (slots 0-3), blinking
+    ld a, [wDjSel]
+    add a, a
+    ld hl, DjCellXY
+    ADD_HL_A
+    ld a, [hl+]
+    ld c, a                 ; screen x of the portrait
+    ld b, [hl]              ; screen y
+    ld hl, wShadowOAM
+    ld d, 0                 ; corner: x offset, y offset, attr
+    ld e, 4
+    push hl
+    ld hl, CornerTab
+.corner:
+    ld a, [hl+]
+    add a, c
+    ld [wTmp], a            ; x
+    ld a, [hl+]
+    add a, b
+    ld [wTmp + 1], a        ; y
+    ld a, [hl+]
+    ld [wTmp + 2], a        ; attr
+    push hl
+    ld hl, wShadowOAM
+    ld a, d
+    ADD_HL_A
+    ld a, [wTmp + 1]
+    ld [hl+], a
+    ld a, [wTmp]
+    ld [hl+], a
+    ld a, SPR_CORNER
+    ld [hl+], a
+    ld a, [wTmp + 2]
+    ld [hl], a
+    pop hl
+    ld a, d
+    add a, 4
+    ld d, a
+    dec e
+    jr nz, .corner
+    pop hl
+    ld a, 16
+    ADD_HL_A
+.hearts:
+    ; hearts on booked DJs (slots 4-9)
+    ld a, [wDjMask]
+    ld d, a
+    ld e, 0
+.heart:
+    rr d
+    jr nc, .noHeart
+    push hl
+    ld a, e
+    add a, a
+    ld hl, DjCellXY
+    ADD_HL_A
+    ld a, [hl+]
+    add a, 24 + 8
+    ld c, a
+    ld a, [hl]
+    add a, 16 - 4
+    pop hl
+    ld [hl+], a
+    ld a, c
+    ld [hl+], a
+    ld a, SPR_HEART
+    ld [hl+], a
+    ld a, 2
+    ld [hl+], a
+    jr .nextHeart
+.noHeart:
+    xor a
+    ld [hl+], a
+    ld [hl+], a
+    ld [hl+], a
+    ld [hl+], a
+.nextHeart:
+    inc e
+    ld a, e
+    cp NUM_DJS
+    jr nz, .heart
+    ret
+
+; portrait cells: map address, screen position
+DjCellMap:
+    dw _SCRN0 + 3 * 32 + 2, _SCRN0 + 3 * 32 + 8, _SCRN0 + 3 * 32 + 14
+    dw _SCRN0 + 9 * 32 + 2, _SCRN0 + 9 * 32 + 8, _SCRN0 + 9 * 32 + 14
+DjCellXY:
+    db 16, 24, 64, 24, 112, 24
+    db 16, 72, 64, 72, 112, 72
+; x, y offsets (OAM space) and flips for the 4 frame corners
+CornerTab:
+    db 8 - 4, 16 - 4, 0
+    db 8 + 28, 16 - 4, $20
+    db 8 - 4, 16 + 28 - 8, $40
+    db 8 + 28, 16 + 28 - 8, $60
+
+; ==========================================================================
+; Setup 2/2: dig the record crates (slot machine)
+; ==========================================================================
+DEF NUM_REELS EQU 3
+
+CratesInit:
+    call LoadCrates
+    ld a, 1
+    ld [wNoFlash], a
+    ld hl, CratePalettes
+    ld de, wBasePal
+    ld bc, 128
+    call MemCopy
+    DRAW StrDigCrates, 1, 2, 4, 16
+    ; machine frame (tile rows 3-12)
+    ld a, BANK(CrateFrameMap)
+    ld hl, CrateFrameMap
+    ld de, _SCRN0 + 3 * 32
+    ld bc, (20 << 8) | 10
+    call CopyRectBank
+    ld a, $08 | 7
+    ld de, _SCRN0 + 3 * 32
+    ld bc, (20 << 8) | 10
+    call SetAttrRect
     ld c, 0
-.pal:
+.reel:
     push bc
-    call DjRowColor
+    ld hl, wReelIdx
+    ld a, c
+    ADD_HL_A
+    ld a, c
+    add a, a
+    ld [hl], a              ; start on sleeves 0, 2, 4
+    ld hl, wReelTimer
+    ld a, c
+    ADD_HL_A
+    ld a, c
+    add a, 2
+    ld [hl], a
+    ld hl, wReelDelay
+    ld a, c
+    ADD_HL_A
+    ld [hl], 3
+    ld hl, wReelState
+    ld a, c
+    ADD_HL_A
+    ld [hl], 0
+    ; draw the sleeve
+    ld a, c
+    call ReelMapAddr
+    ld a, c
+    add a, a
+    swap a
+    add a, SLEEVE_BASE
+    ld b, a
+    ld a, c
+    inc a
+    or $08
+    ld c, a
+    call DrawBlock4
+    pop bc
+    push bc
+    ld a, c
+    call ReelPalette
     pop bc
     inc c
     ld a, c
-    cp NUM_DJS
-    jr nz, .pal
-
-    ; cursor
-    ld a, [wDjSel]
-    add a, 4
-    add a, a
-    add a, a
-    add a, a
-    add a, 16
-    ld hl, wShadowOAM
-    ld [hl+], a
-    ld a, [wFrame]
-    add a, a
-    add a, a
-    ld e, a
-    ld d, HIGH(SineTab)
-    ld a, [de]
-    sra a
-    sra a
-    sra a
-    add a, 16 + 8
-    ld [hl+], a
-    ld a, SPR_CURSOR
-    ld [hl+], a
+    cp NUM_REELS
+    jr nz, .reel
     xor a
-    ld [hl], a
+    ld [wCratesDone], a
+    ld [wReelDirty], a
+    ld hl, TxtCratesIntro
+    jp OpenText
+
+; a = reel -> de = map address of its window
+ReelMapAddr:
+    ld e, a
+    add a, a
+    add a, e
+    add a, a                ; * 6
+    add a, LOW(_SCRN0 + 5 * 32 + 2)
+    ld e, a
+    ld d, HIGH(_SCRN0 + 5 * 32 + 2)
     ret
 
-; c = row: selected = rainbow, booked = green, others = grey
-DjRowColor:
-    ld a, c
-    ld hl, RowPal
+; a = reel: copy its sleeve's palette into BG palette reel + 1
+ReelPalette:
+    ld c, a
+    ld hl, wReelIdx
     ADD_HL_A
     ld a, [hl]
     add a, a
     add a, a
-    add a, 3
-    ldh [hTmpSlot], a
-    ld a, [wDjSel]
-    cp c
-    jr nz, .notSel
-    ld a, [wFrame]
+    add a, a                ; * 8 bytes
+    ld hl, SleevePalettes
+    ADD_HL_A
+    ld a, c
+    inc a
     add a, a
-    and 31
-    ld hl, RainbowHi
-    call GetWord
-    jr .set
-.notSel:
-    ld a, [wDjMask]
+    add a, a
+    add a, a
+    ld de, wBasePal
+    add a, e
+    ld e, a
+    ld b, 8
+.copy:
+    ld a, [hl+]
+    ld [de], a
+    inc de
+    dec b
+    jr nz, .copy
+    ret
+
+CratesUpdate:
+    call CommonUpdate
+    call TextStep
+    jr z, .input
+    ld a, [wTbDone]
+    and a
+    jr z, .spin
+    xor a
+    ld [wTbDone], a
+    ld a, [wCratesDone]
+    and a
+    jr z, .spin
+    ld a, SCR_LOADING
+    jp RequestScreen
+.input:
+    ldh a, [hJoyPressed]
+    and (1 << PADB_A) | (1 << PADB_START)
+    jr z, .spin
+    ld hl, wReelState       ; stop the first reel that still spins
+    ld c, 0
+.find:
+    ld a, [hl]
+    and a
+    jr z, .stop
+    inc hl
     inc c
-.shift:
-    dec c
-    jr z, .test
-    rrca
-    jr .shift
-.test:
-    bit 0, a
-    ld bc, COL_GREY
-    jr z, .set
-    ld bc, COL_GREEN
-.set:
-    ldh a, [hTmpSlot]
-    jp SetPalColor
+    ld a, c
+    cp NUM_REELS
+    jr nz, .find
+    jr .spin
+.stop:
+    ld [hl], 1
+    ld hl, wReelIdx         ; slow down and land on the jackpot sleeve
+    ld a, c
+    ADD_HL_A
+    ld a, JACKPOT + NUM_SLEEVES
+    sub [hl]
+    cp NUM_SLEEVES
+    jr c, .mod
+    sub NUM_SLEEVES
+.mod:
+    add a, NUM_SLEEVES
+    ld hl, wReelLeft
+    ld b, a
+    ld a, c
+    ADD_HL_A
+    ld [hl], b
+    call SfxSelect
+
+.spin:
+    ld c, 0
+.reelLoop:
+    ld hl, wReelState
+    ld a, c
+    ADD_HL_A
+    ld a, [hl]
+    cp 2
+    jr z, .nextReel
+    ld hl, wReelTimer
+    ld a, c
+    ADD_HL_A
+    dec [hl]
+    jr nz, .nextReel
+    ; next sleeve
+    push bc
+    ld hl, wReelIdx
+    ld a, c
+    ADD_HL_A
+    ld a, [hl]
+    inc a
+    cp NUM_SLEEVES
+    jr c, .noWrap
+    xor a
+.noWrap:
+    ld [hl], a
+    ld a, c
+    call ReelPalette
+    pop bc
+    ld hl, wReelDirty
+    ld a, c
+    inc a
+    ld b, 1
+.dirtyBit:
+    dec a
+    jr z, .setDirty
+    sla b
+    jr .dirtyBit
+.setDirty:
+    ld a, [hl]
+    or b
+    ld [hl], a
+    ld hl, wReelDelay
+    ld a, c
+    ADD_HL_A
+    ld b, [hl]
+    ld hl, wReelState
+    ld a, c
+    ADD_HL_A
+    ld a, [hl]
+    and a
+    jr z, .rearm
+    push hl                 ; stopping: count down, slow down
+    ld hl, wReelLeft
+    ld a, c
+    ADD_HL_A
+    dec [hl]
+    pop hl
+    jr nz, .slower
+    ld [hl], 2              ; stopped
+    call SfxMove
+    jr .nextReel
+.slower:
+    inc b
+    inc b
+    push hl
+    ld hl, wReelDelay
+    ld a, c
+    ADD_HL_A
+    ld [hl], b
+    pop hl
+.rearm:
+    ld hl, wReelTimer
+    ld a, c
+    ADD_HL_A
+    ld [hl], b
+.nextReel:
+    inc c
+    ld a, c
+    cp NUM_REELS
+    jp nz, .reelLoop
+
+    ; redraw one changed reel per frame
+    ld a, [wQueueLen]
+    and a
+    ret nz
+    ld a, [wReelDirty]
+    and a
+    jr z, .allDrawn
+    ld c, 0
+    ld b, 1
+.findDirty:
+    ld a, [wReelDirty]
+    and b
+    jr nz, .draw
+    inc c
+    sla b
+    jr .findDirty
+.draw:
+    ld a, [wReelDirty]
+    xor b
+    ld [wReelDirty], a
+    ld a, c
+    call ReelMapAddr
+    ld hl, wReelIdx
+    ld a, c
+    ADD_HL_A
+    ld a, [hl]
+    swap a
+    add a, SLEEVE_BASE
+    ld b, a
+    jp QueueBlock4
+.allDrawn:
+    ; all stopped?
+    ld a, [wCratesDone]
+    and a
+    ret nz
+    ld a, [wReelState]
+    ld b, a
+    ld a, [wReelState + 1]
+    and b
+    ld b, a
+    ld a, [wReelState + 2]
+    and b
+    cp 2
+    ret nz
+    ld a, 1
+    ld [wCratesDone], a
+    call SfxSelect
+    ld hl, StrJackpotLabels
+    ld de, _SCRN0 + 13 * 32 + 1
+    call QueueText
+    ld hl, TxtJackpot
+    jp OpenText
 
 ; ==========================================================================
 ; Setup 2/2: warm up the turntables
@@ -1683,7 +2106,7 @@ DEF SCRATCH_SPEED EQU 120
 
 ScratchInit:
     call LoadDeck
-    DRAW StrSetup3, 1, 2, 7, 16
+    DRAW StrTechSetup, 1, 5, 7, 10
     ld hl, DeckMap
     ld de, _SCRN0 + 3 * 32 + 1
     ld bc, (9 << 8) | 8
@@ -1703,8 +2126,6 @@ ScratchInit:
     DRAW StrDeckA, 12, 2, 2, 6
     DRAW StrDeckB, 12, 11, 3, 6
     DRAW StrScratches, 14, 3, 7, 14
-    DRAW StrTurnHint1, 15, 1
-    DRAW StrTurnHint2, 16, 3
 
     ld hl, DeckPalettes
     ld de, wBasePal + 4 * 8
@@ -1736,7 +2157,9 @@ ScratchInit:
     xor a
     ld [wDeckSel], a
     ld [wScratchCnt], a
-    ret
+    ld [wScratchDone], a
+    ld hl, TxtTechIntro
+    jp OpenText
 
 ScratchUpdate:
     call CommonUpdate
@@ -1745,7 +2168,12 @@ ScratchUpdate:
     ld a, [wTbDone]
     and a
     jr z, .input            ; box open: decks keep spinning, pad muted
-    ld a, SCR_LOADING
+    xor a
+    ld [wTbDone], a
+    ld a, [wScratchDone]
+    and a
+    jr z, .input
+    ld a, SCR_END
     jp RequestScreen
 .input:
 
@@ -1784,6 +2212,8 @@ ScratchUpdate:
     ld a, [wScratchCnt]
     cp SCRATCH_GOAL
     jr nz, .noCount
+    ld a, 1
+    ld [wScratchDone], a
     ld hl, TxtScratchDone
     call OpenText
 .noCount:
@@ -2005,19 +2435,16 @@ LoadingInit:
     ld a, [wMusicOn]        ; decks may have been stopped: the party needs music
     and a
     call z, MusicRestart
-    DRAW StrLoading, 4, 2, 4, 16
-    ld hl, _SCRN0 + 7 * 32 + 2
+    DRAW StrLoading, 6, 2, 4, 16
+    ld hl, _SCRN0 + 9 * 32 + 2
     ld b, 16
     ld a, TILE_BAR_EMPTY
     call FillBytes
     ld a, 2
-    ld de, _SCRN0 + 7 * 32 + 2
+    ld de, _SCRN0 + 9 * 32 + 2
     ld bc, (16 << 8) | 1
     call SetAttrRect
-    DRAW LoadMsgs, 10, 2, 3, 16
-    DRAW StrDJs, 13, 1, 2, 17
-    DRAW StrStart, 14, 4
-    DRAW StrOsm1, 16, 1
+    DRAW LoadMsgs, 12, 2, 3, 16
     ret
 
 LoadingUpdate:
@@ -2042,7 +2469,7 @@ LoadingUpdate:
     ret nc
     dec a                   ; bar cell 0-15
     ld c, a
-    ld hl, _SCRN0 + 7 * 32 + 2
+    ld hl, _SCRN0 + 9 * 32 + 2
     ADD_HL_A
     ld d, h
     ld e, l
@@ -2061,7 +2488,7 @@ LoadingUpdate:
     add a, b                ; * 17
     ld hl, LoadMsgs
     ADD_HL_A
-    ld de, _SCRN0 + 10 * 32 + 2
+    ld de, _SCRN0 + 12 * 32 + 2
     jp QueueText
 
 ; ==========================================================================
@@ -2135,9 +2562,11 @@ MapInit:
     dec e
     jr nz, .fill
 
+    call ObjInit
     ld hl, TxtIntro
     call OpenText
-    jp MapSprites
+    call MapSprites
+    jp ObjDraw
 
 MapUpdate:
     ld hl, wFrame
@@ -2173,15 +2602,18 @@ MapUpdate:
     ld a, [wPendingEnd]
     and a
     jr z, .draw
-    ld a, SCR_END
+    ld a, SCR_CLUB
     jp RequestScreen
 .play:
     call PlayerUpdate
+    call ObjUpdate
+    call ObjCollide
 .draw:
     call MapCamera
     call MapScroll
     call PopupUpdate
-    jp MapSprites
+    call MapSprites
+    jp ObjDraw
 
 PlayerUpdate:
     ld a, [wMoveCnt]
@@ -2195,6 +2627,9 @@ PlayerUpdate:
     ret nz
     jp CheckZone            ; arrived on a new block
 .idle:
+    ld a, [wHitCool]        ; knocked back by a tram: a short stun
+    cp 90 - 24
+    ret nc
     ldh a, [hJoyPressed]
     bit PADB_A, a
     jr z, .noA
@@ -2223,6 +2658,13 @@ PlayerUpdate:
     call FacingColl
     bit 7, a
     jr nz, .blocked
+    ld hl, wPX              ; remember where this move started (tram bumps)
+    ld de, wPrevX
+    REPT 4
+        ld a, [hl+]
+        ld [de], a
+        inc de
+    ENDR
     ld a, 7
     ld [wMoveCnt], a
     jp StepPlayer
@@ -2823,6 +3265,12 @@ MapSprites:
     ld e, $20               ; facing right = left sprite mirrored
 .noFlip:
     ; screen position = world - camera
+    ld a, [wHitCool]        ; blink after a tram bump
+    and 4
+    jr z, .visible
+    ld d, 0
+    ld e, 0
+.visible:
     ld a, [wCamX]
     ld c, a
     ld a, [wPX]
@@ -3020,7 +3468,744 @@ PlayerTiles:
     db SPR_BIKE_L0, SPR_BIKE_L1, SPR_BIKE_L0, SPR_BIKE_L1
 
 ; ==========================================================================
-; Ending: night at Ballhaus West
+; Trams (yellow, on the real tram lines) and trains behind the Hauptbahnhof
+; object: type (1 tram across, 2 tram along, 3 train), pos (dw), fixed (dw), min (dw), max (dw)
+; ==========================================================================
+DEF OBJ_SIZE  EQU 9
+DEF MAX_OBJS  EQU 6
+
+ObjInit:
+    ld hl, wObjs
+    ld b, MAX_OBJS * OBJ_SIZE
+    xor a
+    call FillBytes
+    ld hl, OwTrams
+    ld a, [hl+]
+    ld c, a                 ; number of tram routes
+    ld de, wObjs
+.tram:
+    ld a, c
+    and a
+    jr z, .trains
+    ld a, [hl+]             ; 0 across, 1 along
+    inc a
+    ld [de], a
+    inc de
+    push hl                 ; pos = start (+ some offset so they are spread out)
+    inc hl
+    inc hl
+    ld a, [hl+]
+    ld b, [hl]
+    pop hl
+    ld [de], a
+    inc de
+    ld a, b
+    ld [de], a
+    inc de
+    REPT 6                  ; fixed, min, max
+        ld a, [hl+]
+        ld [de], a
+        inc de
+    ENDR
+    dec c
+    jr .tram
+.trains:
+    ld hl, TrainInit
+    ld b, 2 * OBJ_SIZE
+.copy:
+    ld a, [hl+]
+    ld [de], a
+    inc de
+    dec b
+    jr nz, .copy
+    ret
+
+TrainInit:
+    db 3
+    dw 40, OW_TRAIN_Y1, 0, OW_W * 16
+    db 3
+    dw 300, OW_TRAIN_Y2, 0, OW_W * 16
+
+; move every object; everything wraps back to its route start
+ObjUpdate:
+    ld hl, wObjs
+    ld c, MAX_OBJS
+.loop:
+    push bc
+    push hl
+    ld a, [hl+]
+    and a
+    jr z, .next
+    ld b, 1
+    cp 3
+    jr nz, .speed
+    ld b, 2
+.speed:
+    ld a, [hl]
+    add a, b
+    ld [hl+], a
+    ld e, a
+    ld a, [hl]
+    adc a, 0
+    ld [hl+], a
+    ld d, a                 ; de = pos, hl -> fixed
+    inc hl
+    inc hl
+    ld a, [hl+]
+    ld c, a
+    ld a, [hl+]
+    ld b, a                 ; bc = min, hl -> max
+    ld a, [hl+]
+    sub e
+    ld a, [hl]
+    sbc a, d
+    jr nc, .next            ; pos <= max
+    pop hl
+    push hl
+    inc hl
+    ld [hl], c
+    inc hl
+    ld [hl], b
+.next:
+    pop hl
+    ld de, OBJ_SIZE
+    add hl, de
+    pop bc
+    dec c
+    jr nz, .loop
+    ret
+
+; player vs trams: bumped back one block with a ding (no text, keeps the pace)
+ObjCollide:
+    ld a, [wHitCool]
+    and a
+    jr z, .check
+    dec a
+    ld [wHitCool], a
+    ret
+.check:
+    ld hl, wObjs
+    ld c, MAX_OBJS
+.loop:
+    push bc
+    ld a, [hl]
+    cp 1
+    jr z, .across
+    cp 2
+    jr z, .along
+.next:
+    pop bc
+    ld de, OBJ_SIZE
+    add hl, de
+    dec c
+    jr nz, .loop
+    ret
+.across:                    ; 32 x 16 at (pos, fixed)
+    push hl
+    inc hl
+    call ReadPair           ; bc = pos, de = fixed
+    push de
+    ld hl, wPX
+    ld a, 32
+    call Overlap
+    pop bc
+    jr nc, .miss
+    ld hl, wPY
+    ld a, 16
+    call Overlap
+    jr nc, .miss
+    jr .hit
+.along:                     ; 16 x 32 at (fixed, pos)
+    push hl
+    inc hl
+    call ReadPair           ; bc = pos, de = fixed
+    push bc
+    ld b, d
+    ld c, e
+    ld hl, wPX
+    ld a, 16
+    call Overlap
+    pop bc
+    jr nc, .miss
+    ld hl, wPY
+    ld a, 32
+    call Overlap
+    jr nc, .miss
+.hit:
+    pop hl
+    pop bc
+    ld a, 90
+    ld [wHitCool], a
+    xor a
+    ld [wMoveCnt], a
+    ld hl, wPrevX
+    ld de, wPX
+    REPT 4
+        ld a, [hl+]
+        ld [de], a
+        inc de
+    ENDR
+    jp SfxDing
+.miss:
+    pop hl
+    jr .next
+
+; hl -> pos, fixed (words) -> bc = pos, de = fixed
+ReadPair:
+    ld a, [hl+]
+    ld c, a
+    ld a, [hl+]
+    ld b, a
+    ld a, [hl+]
+    ld e, a
+    ld d, [hl]
+    ret
+
+; hl -> player coordinate, bc = object coordinate, a = object size
+; -> carry if player - object is in (-16, size)
+Overlap:
+    push af
+    ld a, [hl+]
+    add a, 16
+    ld e, a
+    ld a, [hl]
+    adc a, 0
+    ld d, a                 ; de = player + 16
+    ld a, e
+    sub c
+    ld e, a
+    ld a, d
+    sbc a, b
+    ld d, a                 ; de = player + 16 - object, need 0 < de < size + 16
+    pop af
+    add a, 16
+    ld b, a
+    ld a, d
+    and a
+    ret nz                  ; negative or large: no carry after 'and'
+    ld a, e
+    and a
+    ret z
+    cp b
+    ret                     ; carry if e < size + 16
+
+; draw all objects from OAM slot 3 (trams 4 entries, trains 8), clear the rest
+ObjDraw:
+    ld hl, wShadowOAM + 3 * 4
+    ld de, wObjs
+    ld c, MAX_OBJS
+.loop:
+    push bc
+    ld a, [de]
+    and a
+    jr z, .next
+    push de
+    ld b, a
+    inc de
+    ld a, [de]
+    ld [wObjX], a
+    inc de
+    ld a, [de]
+    ld [wObjX + 1], a
+    inc de
+    ld a, [de]
+    ld [wObjY], a
+    inc de
+    ld a, [de]
+    ld [wObjY + 1], a
+    ld a, b
+    cp 2
+    jr z, .along
+    jr nc, .train
+    ld de, (SPR_TRAM_H << 8) | 2
+    call DrawPart
+    call ObjRight16
+    ld de, ((SPR_TRAM_H + 4) << 8) | 2
+    call DrawPart
+    jr .done
+.along:                     ; pos is y, fixed is x
+    call SwapObjXY
+    ld de, (SPR_TRAM_V << 8) | 2
+    call DrawPart
+    call ObjDown16
+    ld de, ((SPR_TRAM_V + 4) << 8) | 2
+    call DrawPart
+    jr .done
+.train:
+    ld de, (SPR_TRAIN_CAR << 8) | 3
+    call DrawPart
+    call ObjRight16
+    ld de, ((SPR_TRAIN_CAR + 4) << 8) | 3
+    call DrawPart
+    call ObjRight16
+    ld de, ((SPR_TRAIN_FRONT + 4) << 8) | $23   ; front car mirrored: nose to the right
+    call DrawPart
+    call ObjRight16
+    ld de, (SPR_TRAIN_FRONT << 8) | $23
+    call DrawPart
+.done:
+    pop de
+.next:
+    ld a, OBJ_SIZE
+    add a, e
+    ld e, a
+    adc a, d
+    sub e
+    ld d, a
+    pop bc
+    dec c
+    jr nz, .loop
+.clear:                     ; unused slots up to 40
+    ld a, l
+    cp LOW(wShadowOAM + 160)
+    ret z
+    xor a
+    ld [hl+], a
+    jr .clear
+
+SwapObjXY:
+    ld a, [wObjX]
+    ld b, a
+    ld a, [wObjY]
+    ld [wObjX], a
+    ld a, b
+    ld [wObjY], a
+    ld a, [wObjX + 1]
+    ld b, a
+    ld a, [wObjY + 1]
+    ld [wObjX + 1], a
+    ld a, b
+    ld [wObjY + 1], a
+    ret
+
+ObjRight16:
+    ld a, [wObjX]
+    add a, 16
+    ld [wObjX], a
+    ret nc
+    ld a, [wObjX + 1]
+    inc a
+    ld [wObjX + 1], a
+    ret
+
+ObjDown16:
+    ld a, [wObjY]
+    add a, 16
+    ld [wObjY], a
+    ret nc
+    ld a, [wObjY + 1]
+    inc a
+    ld [wObjY + 1], a
+    ret
+
+ClearPart:
+    xor a
+    REPT 8
+        ld [hl+], a
+    ENDR
+    ret
+
+; de = world coordinate, bc = camera, l = limit
+; -> a = world - camera + 16 and carry set when 1 <= a < limit
+ToScreen:
+    ld a, e
+    sub c
+    ld e, a
+    ld a, d
+    sbc a, b
+    ld d, a
+    ld a, e
+    add a, 16
+    ld e, a
+    ld a, d
+    adc a, 0
+    jr nz, .out
+    ld a, e
+    and a
+    jr z, .out
+    cp l
+    ld a, e
+    ret
+.out:
+    xor a
+    ret
+
+; 16x16 part at world (wObjX, wObjY), tile d, attribute e -> 2 OAM entries at hl
+DrawPart:
+    push de
+    push hl
+    ld hl, wObjX
+    ld a, [hl+]
+    ld e, a
+    ld d, [hl]
+    ld hl, wCamX
+    ld a, [hl+]
+    ld c, a
+    ld b, [hl]
+    ld l, 176
+    call ToScreen
+    jr nc, .hide
+    ld [wTmp], a            ; screen x + 16
+    ld hl, wObjY
+    ld a, [hl+]
+    ld e, a
+    ld d, [hl]
+    ld hl, wCamY
+    ld a, [hl+]
+    ld c, a
+    ld b, [hl]
+    ld l, 160
+    call ToScreen
+    jr nc, .hide
+    ld b, a                 ; OAM y
+    pop hl
+    pop de
+    ld a, [wWindowOn]
+    and a
+    jr z, .put
+    ld a, [wWinY]
+    cp b
+    jp c, ClearPart
+.put:
+    ld a, [wTmp]
+    sub 8
+    ld c, a
+    jp Put16
+.hide:
+    pop hl
+    pop de
+    jp ClearPart
+
+; ==========================================================================
+; Ballhaus West inside: walk to the decks
+; ==========================================================================
+ClubInit:
+    call LoadClub
+    call LoadOwSprites
+    xor a
+    ld [wRaster], a
+    ld a, BANK(ClubMap)
+    ld hl, ClubMap
+    ld de, _SCRN0
+    ld bc, (20 << 8) | 18
+    call CopyRectBank
+    ld a, 1
+    ldh [rVBK], a
+    ld a, BANK(ClubAttr)
+    ld hl, ClubAttr
+    ld de, _SCRN0
+    ld bc, (20 << 8) | 18
+    call CopyRectBank
+    xor a
+    ldh [rVBK], a
+    ld hl, ClubPalettes
+    ld de, wBasePal
+    ld bc, 128
+    call MemCopy
+    ld hl, wPX
+    ld a, CLUB_START_X * 16
+    ld [hl+], a
+    ld [hl], 0
+    ld hl, wPY
+    ld a, CLUB_START_Y * 16
+    ld [hl+], a
+    ld [hl], 0
+    xor a
+    ld [wCamX], a
+    ld [wCamX + 1], a
+    ld [wCamY], a
+    ld [wCamY + 1], a
+    ld [wMoveCnt], a
+    ld [wClubGo], a
+    ld a, 1
+    ld [wDir], a
+    ld hl, TxtClubIntro
+    call OpenText
+    jp ClubSprites
+
+ClubUpdate:
+    ld hl, wFrame
+    inc [hl]
+    ld a, [wBeatFlash]
+    and a
+    jr z, .noDecay
+    dec a
+    ld [wBeatFlash], a
+.noDecay:
+    ; dance floor: rotate its four colours on every kick
+    ld a, [wBeatFlash]
+    cp 8
+    jr nz, .noRotate
+    ld hl, wBasePal + 3 * 8
+    ld a, [hl+]
+    ld c, a
+    ld a, [hl+]
+    ld b, a
+    ld de, wBasePal + 3 * 8
+    REPT 6
+        ld a, [hl+]
+        ld [de], a
+        inc de
+    ENDR
+    ld a, c
+    ld [de], a
+    inc de
+    ld a, b
+    ld [de], a
+.noRotate:
+    call TextStep
+    jr z, .play
+    ld a, [wTbDone]
+    and a
+    jr z, .draw
+    xor a
+    ld [wTbDone], a
+    ld a, [wClubGo]
+    and a
+    jr z, .draw
+    ld a, SCR_SCRATCH
+    jp RequestScreen
+.play:
+    call ClubPlayer
+.draw:
+    jp ClubSprites
+
+ClubPlayer:
+    ld a, [wMoveCnt]
+    and a
+    jr z, .idle
+    dec a
+    ld [wMoveCnt], a
+    jp ClubStep
+.idle:
+    ldh a, [hJoyPressed]
+    bit PADB_A, a
+    jr z, .noA
+    call ClubFacing
+    cp $81
+    jr z, .decks
+    ret
+.noA:
+    ldh a, [hPadHeld]
+    ld b, 0
+    bit PADB_DOWN, a
+    jr nz, .dir
+    inc b
+    bit PADB_UP, a
+    jr nz, .dir
+    inc b
+    bit PADB_LEFT, a
+    jr nz, .dir
+    inc b
+    bit PADB_RIGHT, a
+    ret z
+.dir:
+    ld a, b
+    ld [wDir], a
+    call ClubFacing
+    cp $81
+    jr z, .decks
+    bit 7, a
+    jr nz, .bump
+    ld a, 15
+    ld [wMoveCnt], a
+    jr ClubStep
+.bump:
+    ld a, [wBumpCool]
+    and a
+    ret nz
+    ld a, 16
+    ld [wBumpCool], a
+    jp SfxBump
+.decks:
+    ld a, 1
+    ld [wClubGo], a
+    call SfxSelect
+    ld hl, TxtAtDecks
+    jp OpenText
+
+; walk 1 px in wDir
+ClubStep:
+    ld a, [wDir]
+    ld hl, wPY
+    cp 2
+    jr c, .axis
+    ld hl, wPX
+.axis:
+    cp 1
+    jr z, .minus
+    cp 2
+    jr z, .minus
+    inc [hl]
+    ret
+.minus:
+    dec [hl]
+    ret
+
+; -> a = club collision of the block the player faces
+ClubFacing:
+    ld a, [wBumpCool]
+    and a
+    jr z, .cool
+    dec a
+    ld [wBumpCool], a
+.cool:
+    ld a, [wPX]
+    swap a
+    and $0F
+    ld c, a
+    ld a, [wPY]
+    swap a
+    and $0F
+    ld b, a
+    ld a, [wDir]
+    and a
+    jr nz, .nd
+    inc b
+    jr .look
+.nd:
+    dec a
+    jr nz, .nu
+    dec b
+    jr .look
+.nu:
+    dec a
+    jr nz, .r
+    dec c
+    jr .look
+.r:
+    inc c
+.look:
+    ld a, c
+    cp 10
+    jr nc, .solid
+    ld a, b
+    cp 9
+    jr nc, .solid
+    add a, a
+    ld e, a
+    add a, a
+    add a, a
+    add a, e                ; y * 10
+    add a, c
+    ld hl, ClubColl
+    ADD_HL_A
+    ld a, [hl]
+    ret
+.solid:
+    ld a, $80
+    ret
+
+ClubSprites:
+    ld hl, wShadowOAM
+    ld a, [wDir]
+    add a, a
+    ld b, a
+    ld a, [wMoveCnt]
+    and a
+    jr z, .still
+    ld a, [wFrame]
+    rrca
+    rrca
+    rrca
+    and 1
+    add a, b
+    ld b, a
+.still:
+    push hl
+    ld a, b
+    ld hl, WalkTiles
+    ADD_HL_A
+    ld d, [hl]
+    pop hl
+    ld a, [wDir]
+    cp 3
+    ld e, 0
+    jr nz, .noFlip
+    ld e, $20
+.noFlip:
+    ld a, [wPX]
+    add a, 8
+    ld c, a
+    ld a, [wPY]
+    add a, 16
+    ld b, a
+    call Put16
+    ; three dancers bouncing to the beat
+    ld de, Dancers
+    ld c, 3
+.dancer:
+    push bc
+    ld a, [de]
+    add a, 8
+    ld c, a
+    inc de
+    ld a, [wBeatFlash]
+    cp 4
+    ld a, [de]
+    jr c, .down
+    sub 3
+.down:
+    add a, 16
+    ld b, a
+    inc de
+    ld a, [de]              ; palette
+    inc de
+    push de
+    ld e, a
+    ld a, [wFrame]
+    and 32
+    ld d, SPR_WALK_D0
+    jr z, .pose
+    ld d, SPR_WALK_L0
+.pose:
+    call Put16
+    pop de
+    pop bc
+    dec c
+    jr nz, .dancer
+    ret
+
+; b = OAM y, c = OAM x (left), d = tile, e = attr -> 2 entries at hl
+Put16:
+    ld a, b
+    ld [hl+], a
+    ld a, c
+    ld [hl+], a
+    bit 5, e
+    ld a, d
+    jr z, .lt
+    add a, 2
+.lt:
+    ld [hl+], a
+    ld a, e
+    ld [hl+], a
+    ld a, b
+    ld [hl+], a
+    ld a, c
+    add a, 8
+    ld [hl+], a
+    bit 5, e
+    ld a, d
+    jr nz, .rt
+    add a, 2
+.rt:
+    ld [hl+], a
+    ld a, e
+    ld [hl+], a
+    ret
+
+WalkTiles:
+    db SPR_WALK_D0, SPR_WALK_D1, SPR_WALK_U0, SPR_WALK_U1
+    db SPR_WALK_L0, SPR_WALK_L1, SPR_WALK_L0, SPR_WALK_L1
+; x, y, palette
+Dancers:
+    db 40, 52, 1
+    db 96, 64, 2
+    db 64, 76, 3
+
+; ==========================================================================
+; Ending: night at Ballhaus West with the animated ENKA logo
 ; ==========================================================================
 DEF NUM_CONFETTI EQU 12
 
@@ -3028,23 +4213,29 @@ EndInit:
     xor a
     ld [wTimerOn], a
     call LoadEndTiles
-    ; picture: tile rows 0-13 (tiles + attributes live in ROM bank 3)
+    call LoadLogo
     ld a, BANK(EndMap)
-    ld [rROMB0], a
     ld hl, EndMap
     ld de, _SCRN0
     ld bc, (20 << 8) | 14
-    call CopyRect
+    call CopyRectBank
     ld a, 1
     ldh [rVBK], a
+    ld a, BANK(EndAttr)
     ld hl, EndAttr
     ld de, _SCRN0
     ld bc, (20 << 8) | 14
-    call CopyRect
+    call CopyRectBank
     xor a
     ldh [rVBK], a
+    ld hl, LogoMap
+    ld de, _SCRN0 + 1 * 32 + 2
+    ld bc, (16 << 8) | 4
+    call CopyRect
     ld a, 1
-    ld [rROMB0], a
+    ld de, _SCRN0 + 1 * 32 + 2
+    ld bc, (16 << 8) | 4
+    call SetAttrRect
     ; clear the bottom border row
     ld hl, _SCRN0 + 17 * 32
     ld b, 32
@@ -3061,9 +4252,9 @@ EndInit:
     call MemCopy
 
     DRAW StrDateTime, 14, 0, 7, 20
-    DRAW StrDJs, 15, 1, 6, 17
+    DRAW StrDJs, 15, 1, 6, 18
     DRAW StrYourTime, 16, 2
-    DRAW StrSeeYou, 17, 3, 6, 14
+    DRAW StrSeeYou, 17, 1, 6, 18
 
     ; play time m:ss (capped at 9:59)
     ld hl, wPlayTime
@@ -3100,7 +4291,6 @@ EndInit:
     ld de, _SCRN0 + 16 * 32 + 13
     call DrawText
 
-    ; confetti
     ld hl, wConfetti
     ld c, NUM_CONFETTI
 .conf:
@@ -3114,8 +4304,8 @@ EndInit:
     dec c
     jr nz, .conf
 
-    ld bc, (48 << 8) | 63
-    ld de, (4 << 8) | 15
+    ld bc, (16 << 8) | 127
+    ld de, (4 << 8) | 31
     jp InitSparkles
 
 EndUpdate:
@@ -3134,7 +4324,23 @@ EndUpdate:
     ld a, SCR_TITLE
     jp RequestScreen
 .stay:
-    ; ENKA rainbow
+    ld hl, wScxTable + 8    ; wavy logo like on the title
+    call LogoWave
+    ; bottom line alternates: see you there / map credit
+    ld a, [wFrame]
+    and $7F
+    jr nz, .noSwap
+    ld a, [wEndLine]
+    inc a
+    ld [wEndLine], a
+    and 1
+    ld hl, StrSeeYou
+    jr z, .line
+    ld hl, StrOsmCredit
+.line:
+    ld de, _SCRN0 + 17 * 32 + 1
+    call QueueText
+.noSwap:
     ld a, [wFrame]
     ld e, a
     ld a, 1
@@ -3153,7 +4359,6 @@ EndUpdate:
 .beam:
     ld a, 2 * 4 + 2
     call SetPalColor
-    ; twinkling stars
     ld a, [wFrame]
     and 24
     ld bc, $7FFF
@@ -3162,7 +4367,6 @@ EndUpdate:
 .star:
     ld a, 2 * 4 + 3
     call SetPalColor
-    ; neon flicker
     ld a, [wFrame]
     and $3F
     cp 7
@@ -3172,7 +4376,6 @@ EndUpdate:
 .neon:
     ld a, 4 * 4 + 2
     call SetPalColor
-    ; crowd rim light pulses with the beat
     ld a, [wBeatFlash]
     and a
     ld bc, (28 << 10) | (18 << 5) | 31
@@ -3188,12 +4391,12 @@ EndUpdate:
     ld de, wShadowOAM + 8 * 4
     ld c, NUM_CONFETTI
 .conf:
-    ld a, [hl+]             ; x
+    ld a, [hl+]
     ld b, a
-    ld a, [hl]              ; y
+    ld a, [hl]
     inc a
     ld [hl+], a
-    cp 136                  ; stop above the text
+    cp 136
     jr c, .onScreen
     xor a
     dec hl
@@ -3202,7 +4405,7 @@ EndUpdate:
     add a, 16
     ld [de], a
     inc de
-    ld a, [hl]              ; phase -> sway
+    ld a, [hl]
     inc [hl]
     inc hl
     push hl
@@ -3222,7 +4425,7 @@ EndUpdate:
     inc de
     ld a, c
     and 3
-    add a, 4                ; OBJ palettes 4-7
+    add a, 4
     ld [de], a
     inc de
     dec c
@@ -3325,6 +4528,24 @@ wStreamN1:   db
 wStreamN2:   db
 wStreamDest: dw
 wConfetti:   ds 12 * 3
+wPrevX:      dw
+wPrevY:      dw
+wHitCool:    db
+wObjs:       ds 6 * 9
+wObjX:       dw
+wObjY:       dw
+wClubGo:     db
+wScratchDone: db
+wEndLine:    db
+wNoFlash:    db
+wTmp:        ds 4
+wReelIdx:    ds 3
+wReelTimer:  ds 3
+wReelDelay:  ds 3
+wReelState:  ds 3
+wReelLeft:   ds 3
+wReelDirty:  db
+wCratesDone: db
 
 SECTION "Stream buffer", WRAM0, ALIGN[6]
 wStreamTiles: ds 32

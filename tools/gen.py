@@ -196,6 +196,8 @@ SPRITES = {
     "SPR_SPARK1": ["........", "........", "...2....", "..232...", "...2....", "........", "........", "........"] + EMPTY8,
     "SPR_SPARK2": ["...1....", "...2....", "..121...", "1223221.", "..121...", "...2....", "...1....", "........"] + EMPTY8,
     "SPR_DOT": ["........", "........", "..333...", "..333...", "..333...", "........", "........", "........"] + EMPTY8,
+    "SPR_CORNER": ["3333....", "3111....", "31......", "31......", "........", "........", "........", "........"] + EMPTY8,
+    "SPR_HEART": ["........", ".22.22..", "2322222.", "2222222.", ".22222..", "..222...", "...2....", "........"] + EMPTY8,
     "SPR_CONFETTI": ["........", "........", "..332...", "..322...", "........", "........", "........", "........"] + EMPTY8,
 }
 for name, rows in SPRITES.items():
@@ -346,6 +348,26 @@ for name, rows in [("SPR_BIKE_D0", BIKE_D0), ("SPR_BIKE_D1", BIKE_D1), ("SPR_BIK
                    ("SPR_BIKE_U1", BIKE_U1), ("SPR_BIKE_L0", BIKE_L0), ("SPR_BIKE_L1", BIKE_L1)]:
     assert len(rows) == 16 and all(len(r) == 16 for r in rows), name
     add_sprite16(name, rows, scene_ow)
+import art2  # noqa: E402
+
+for name, img in [("SPR_WALK_D0", art2.WALK_D0), ("SPR_WALK_D1", art2.WALK_D1), ("SPR_WALK_U0", art2.WALK_U0),
+                  ("SPR_WALK_U1", art2.WALK_U1), ("SPR_WALK_L0", art2.WALK_L0), ("SPR_WALK_L1", art2.WALK_L1)]:
+    add_sprite16(name, img, scene_ow)
+
+
+def add_wide(name, img, scene):
+    """32x16 -> two 16x16 sprites; 16x32 -> top and bottom 16x16"""
+    h, w = len(img), len(img[0])
+    parts = ([[r[i * 16:i * 16 + 16] for r in img] for i in range(w // 16)] if w > 16
+             else [img[i * 16:i * 16 + 16] for i in range(h // 16)])
+    for i, part in enumerate(parts):
+        add_sprite16(name if i == 0 else f"_{name}{i}", part, scene)
+
+
+add_wide("SPR_TRAM_H", art2.tram_h(), scene_ow)
+add_wide("SPR_TRAM_V", art2.tram_v(), scene_ow)
+add_wide("SPR_TRAIN_FRONT", art2.train_car(True), scene_ow)
+add_wide("SPR_TRAIN_CAR", art2.train_car(False), scene_ow)
 add_sprite8("SPR_ARROW_UP", ["...11...", "..1331..", ".133331.", "13333331", "11133111", "..1331..", "..1331..",
                              "..1111.."] + ["........"] * 8, scene_ow)
 add_sprite8("SPR_ARROW_RIGHT", ["....1...", "....11..", "111131..", "13333331", "13333331", "111131..", "....11..",
@@ -413,6 +435,69 @@ print(f"overworld {OW_W}x{OW_H}, {len(ow['metas'])} metatiles, {len(ow_tiles[1])
 
 
 # --------------------------------------------------------------------------
+# DJ avatars (bank 1 on the DJ screen)
+# --------------------------------------------------------------------------
+avatar_tiles = []
+for key, *_ in art2.AVATARS:
+    avatar_tiles += cut(art2.avatar(key))
+
+# --------------------------------------------------------------------------
+# Crate digging slot machine: sleeves (16 tiles each) + the machine frame
+# --------------------------------------------------------------------------
+crate_tiles = [blank(8, 8)]
+for key, _, _ in art2.SLEEVES:
+    crate_tiles += cut(art2.sleeve(key))
+SLEEVE_BASE = 1
+frame = blank(160, 80)                  # tile rows 3-12
+for y in range(80):
+    for x in range(160):
+        if 4 <= x < 156 and 4 <= y < 76:
+            c = 2 if (y // 4) % 4 != 3 else 1          # crate slats
+            if x in (4, 155) or y in (4, 75):
+                c = 3
+        else:
+            c = 0
+        frame[y][x] = c
+for wx in (16, 64, 112):                # reel windows: 32x32 at tile rows 5-8
+    for y in range(12, 52):
+        for x in range(wx - 4, wx + 36):
+            frame[y][x] = 3 if (y in (12, 51) or x in (wx - 4, wx + 35)) else 1
+crate_frame_map = []
+crate_idx = {}
+for t in cut(frame):
+    k = tile_bytes(t)
+    if k not in crate_idx:
+        crate_idx[k] = len(crate_tiles)
+        crate_tiles.append(t)
+    crate_frame_map.append(crate_idx[k])
+assert len(crate_tiles) <= 256, len(crate_tiles)
+
+# --------------------------------------------------------------------------
+# Ballhaus West interior
+# --------------------------------------------------------------------------
+club_mts = art2.club_metatiles(lambda ch: render(FONT[ch], 1, 1, 0, 1, 8, 8, lambda y: 3))
+club_tiles = []
+club_idx = {}
+club_map = [0] * (20 * 18)
+club_attr = [0] * (20 * 18)
+club_coll = []
+for by, row in enumerate(art2.CLUB_MAP):
+    for bx, ch in enumerate(row):
+        img, pal, solid = club_mts[ch]
+        for q, t in enumerate(cut(img)):
+            k = tile_bytes(t)
+            if k not in club_idx:
+                club_idx[k] = len(club_tiles)
+                club_tiles.append(t)
+            pos = (by * 2 + q // 2) * 20 + bx * 2 + q % 2
+            club_map[pos] = club_idx[k]
+            club_attr[pos] = 0x08 | pal
+        club_coll.append(0x81 if ch == "B" else (0x80 if solid else 0))
+assert len(club_tiles) <= 256
+defs += [("CLUB_START_X", art2.CLUB_START[0]), ("CLUB_START_Y", art2.CLUB_START[1]),
+         ("SLEEVE_BASE", SLEEVE_BASE), ("JACKPOT", art2.JACKPOT), ("NUM_SLEEVES", len(art2.SLEEVES))]
+
+# --------------------------------------------------------------------------
 # Ending illustration
 # --------------------------------------------------------------------------
 import ending  # noqa: E402
@@ -425,7 +510,8 @@ assert len(end_tiles) <= 256, len(end_tiles)
 with open(os.path.join(OUT, "tiles0.2bpp"), "wb") as f:
     f.write(b"".join(tile_bytes(t) for t in bank0))
 for name, tiles in [("logo", scene_logo[1]), ("deck", scene_deck[1]), ("owspr", scene_ow[1]),
-                    ("bigfont", bigfont), ("owtiles", ow_tiles[1]), ("endtiles", end_tiles)]:
+                    ("bigfont", bigfont), ("owtiles", ow_tiles[1]), ("endtiles", end_tiles),
+                    ("avatars", avatar_tiles), ("crates", crate_tiles), ("club", club_tiles)]:
     with open(os.path.join(OUT, f"{name}.2bpp"), "wb") as f:
         f.write(b"".join(tile_bytes(t) for t in tiles))
 
@@ -483,7 +569,11 @@ OW_BG = owbuild.A.OW_BG
 OW_OBJ = [
     [0, rgb(2, 2, 4), rgb(28, 5, 6), rgb(31, 31, 31)],     # 0 player (GBC style: white skin)
     [0, rgb(8, 4, 0), rgb(31, 18, 0), rgb(31, 31, 8)],     # 1 goal arrow
-] + [[0, 0, 0, 0]] * 6
+    [0, rgb(3, 3, 4), rgb(31, 26, 4), rgb(24, 28, 31)],    # 2 Karlsruhe tram (yellow)
+    [0, rgb(3, 3, 4), rgb(28, 3, 4), rgb(30, 30, 31)],     # 3 ICE
+] + [[0, 0, 0, 0]] * 4
+CLUB_OBJ = [OW_OBJ[0]] + [[0, rgb(2, 2, 4), c, rgb(31, 24, 18)] for c in
+                          (rgb(4, 20, 30), rgb(30, 8, 24), rgb(8, 26, 8))] + [[0, 0, 0, 0]] * 4
 
 
 def hsv(h, s, v):
@@ -583,6 +673,11 @@ def dstr(text):
     return "    db " + ", ".join(f'"{c}"' if c != '"' else "34" for c in text) + ", $FF"
 
 
+DJ_BG = [BG[0]] + [[bg, rgb(2, 2, 3), hair, skin] for _, _, bg, hair, skin in art2.AVATARS] + [BG[4]]
+CRATE_BG = [BG[0], art2.SLEEVES[0][2], art2.SLEEVES[1][2], art2.SLEEVES[2][2], BG[4], BG[2], BG[3],
+            [NAVY, rgb(8, 4, 2), rgb(20, 11, 5), rgb(27, 18, 9)]]
+
+
 with open(os.path.join(OUT, "data.inc"), "w") as f:
     w = f.write
     w("; generated by tools/gen.py\n\n")
@@ -608,6 +703,19 @@ with open(os.path.join(OUT, "data.inc"), "w") as f:
     w("DeckMap:\n" + db(deck_map, 9) + "\n")
     w("DefaultPalettes:\n" + dw([c for p in BG + OBJ for c in p]) + "\n")
     w("OwPalettes:\n" + dw([c for p in OW_BG + OW_OBJ for c in p]) + "\n")
+    w("DjPalettes:\n" + dw([c for p in DJ_BG + OBJ for c in p]) + "\n")
+    w("CratePalettes:\n" + dw([c for p in CRATE_BG + OBJ for c in p]) + "\n")
+    w("SleevePalettes:\n" + dw([c for _, _, p in art2.SLEEVES for c in p]) + "\n")
+    w("SleeveLabels:\n" + "".join(dstr(l.center(6)) + "\n" for _, l, _ in art2.SLEEVES))
+    w("DjNamesPadded:\n" + "".join(dstr(n.center(18)) + "\n" for _, n, *_ in art2.AVATARS))
+    w("ClubPalettes:\n" + dw([c for p in art2.CLUB_BG + CLUB_OBJ for c in p]) + "\n")
+    w("ClubColl:\n" + db(club_coll, 10) + "\n")
+    routes = ow["tram_routes"]
+    w("OwTrams:\n    db " + str(len(routes)) + "\n")
+    for orient, c, lo, hi in routes:      # orientation, fixed coordinate (px), start, end (px)
+        w(f"    db {0 if orient == 'h' else 1}\n    dw {c * 16}, {lo * 16}, {hi * 16 - 16}\n")
+    rr = ow["rail_rows"]
+    w(f"DEF OW_TRAIN_Y1 EQU {rr[0] * 16}\nDEF OW_TRAIN_Y2 EQU {rr[1] * 16}\n")
     w("EndPalettes:\n" + dw([c for p in ending.END_BG + OBJ for c in p]) + "\n")
     DECK = [NAVY, rgb(18, 18, 22), rgb(2, 2, 5)]
     w("DeckPalettes:\n" + dw(DECK + [rgb(31, 10, 24)] + DECK + [rgb(8, 28, 31)]) + "\n")
@@ -620,7 +728,12 @@ with open(os.path.join(OUT, "data.inc"), "w") as f:
                         ("BigFontTiles", "bigfont"), ("OwTiles", "owtiles")]:
         w(f'{label}:\n    INCBIN "{name}.2bpp"\n{label}End:\n')
     w("\n")
+    for label, name in [("AvatarTiles", "avatars"), ("CrateTiles", "crates"), ("ClubTiles", "club")]:
+        w(f'SECTION "{label}", ROMX, BANK[2]\n{label}:\n    INCBIN "{name}.2bpp"\n{label}End:\n')
     w('SECTION "Ending", ROMX, BANK[3]\n')
+    w("CrateFrameMap:\n" + db(crate_frame_map, 20) + "\n")
+    w("ClubMap:\n" + db(club_map, 20) + "\n")
+    w("ClubAttr:\n" + db(club_attr, 20) + "\n")
     w('EndTiles:\n    INCBIN "endtiles.2bpp"\nEndTilesEnd:\n')
     w("EndMap:\n" + db(end_map, 20) + "\n")
     w("EndAttr:\n" + db(end_attr, 20) + "\n\n")

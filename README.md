@@ -5,13 +5,16 @@ Promo cartridge for ENKA @ Ballhaus West (Hirschstraße 18, Karlsruhe), Thursday
 
 ## How it plays (about a minute)
 
-1. **Title** — ENKA, date, 18:00, venue. Line-up: ???. Press START.
-2. **Setup 1/2** — book two DJs. Not everyone on the list makes the cut.
-3. **Setup 2/2** — warm up the decks: 8 scratches (Left/Right), Up/Down switches deck, A starts/stops a platter.
+1. **Title** — animated ENKA logo, PRESS START.
+2. **Book your DJs** — pick three from six avatars. Sima, Pater and João say yes; the big names are busy.
+3. **Dig the crates** — a record slot machine; stop the three crates with A. Jackpot: house classics.
 4. **Loading party...**
-5. **Bike ride** — from Karlsruhe Hauptbahnhof through the real streets to Ballhaus West.
-   The map is generated from OpenStreetMap data; street names pop up as you ride, the arrow points the way.
-6. **Ending** — night scene at Ballhaus West, the line-up and your time. START plays again.
+5. **Bike ride** — from Karlsruhe Hauptbahnhof through the real streets (OpenStreetMap) to Ballhaus West,
+   Hirschstraße 18. Yellow trams run on the tram lines, ICE trains behind the station, the zoo is fenced off,
+   street names pop up as you ride and an arrow points the way.
+6. **Inside Ballhaus West** — walk past the dance floor to the decks.
+7. **Tech setup** — sound check on the turntables: 8 scratches (Left/Right).
+8. **Ending** — the ENKA logo over a night scene at Ballhaus West, the line-up and your time. START plays again.
 
 ## Build
 
@@ -32,6 +35,7 @@ Or point `RGBDS=/path/to/bin/` at an existing install.
 - `tools/osmmap.py`, `tools/owbuild.py`, `tools/owart.py` — OpenStreetMap extract → 16×16 block map in the
   style of the Game Boy Color Pokémon games (original tiles)
 - `tools/ending.py` — the ending illustration
+- `tools/art2.py` — walking sprites, trams/trains, club interior, DJ avatars, record sleeves
 - `tools/osm/` — OpenStreetMap extract of the area
 
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL).

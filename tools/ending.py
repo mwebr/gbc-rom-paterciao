@@ -74,17 +74,11 @@ def build(font_glyph, big_glyph):
         if px[y][x] in (0, 1):
             px[y][x] = 3
 
-    # --- ENKA in the 2x font, top centre (rows 1-2, cols 6-13) ---------------------
-    region(6, 1, 14, 3, PAL_LOGO)
-    for y in range(8, 24):
-        for x in range(48, 112):
+    # --- the animated ENKA logo goes here at runtime (rows 1-4, cols 2-17) ---------
+    region(2, 1, 18, 5, PAL_LOGO)
+    for y in range(8, 40):
+        for x in range(16, 144):
             px[y][x] = 0
-    for i, ch in enumerate("ENKA"):
-        g = big_glyph(ch)
-        for y in range(16):
-            for x in range(16):
-                if g[y][x]:
-                    px[8 + y][48 + i * 16 + x] = g[y][x]
 
     # --- the building (cols 3-16, rows 7-11) --------------------------------------
     region(3, 7, 17, 12, PAL_BUILDING)

@@ -10,6 +10,7 @@ def build(font_render):
     m = O.build()
     W, H, kind, bid = m["W"], m["H"], m["kind"], m["bid"]
     hbf, ballhaus, goal = m["hbf_id"], m["ballhaus_id"], m["goal"]
+    zoo = m["zoo"]
 
     metas = []          # (img, pals, collision)
     index = {}
@@ -25,14 +26,12 @@ def build(font_render):
     def is_b(x, y):
         return 0 <= x < W and 0 <= y < H and kind[y][x] == O.BUILDING
 
-    # Hauptbahnhof sign across the top row of the station roof
-    hbf_cells = [(x, y) for y in range(H) for x in range(W) if bid[y][x] == hbf]
-    top = min(y for _, y in hbf_cells)
-    row = sorted(x for x, y in hbf_cells if y == top)
+    # Hauptbahnhof sign centred on the top row of the station block
+    hx0, top, hx1, _ = m["hbf_rect"]
     sign_text = "HAUPTBAHNHOF"
     sign_w = (len(sign_text) * 8 + 8 + 15) // 16
-    mid = row[len(row) // 2]
-    sign_x0 = mid - sign_w // 2
+    sign_x0 = (hx0 + hx1 + 1) // 2 - sign_w // 2
+    assert hx0 <= sign_x0 and sign_x0 + sign_w - 1 <= hx1
     sign = A.text_band(sign_text, font_render, color=3, bg=0, width_mt=sign_w)
     for y in range(16):
         for x in range(sign_w * 16):
@@ -66,9 +65,11 @@ def build(font_render):
         for x in range(W):
             k = kind[y][x]
             if k == O.GRASS:
-                out[y][x] = meta("grass", A.GRASS, A.PAL_GREEN)
+                out[y][x] = meta("grass", A.GRASS, A.PAL_GREEN, SOLID if zoo[y][x] else 0)
             elif k == O.TREE:
                 out[y][x] = meta("tree", A.TREE, A.PAL_GREEN, SOLID)
+            elif k == O.FENCE:
+                out[y][x] = meta("fence", A.fence(), A.PAL_GREEN, SOLID)
             elif k == O.PAVE:
                 out[y][x] = meta("pave", A.pavement(), A.PAL_STONE)
             elif k == O.PLAZA:
@@ -77,13 +78,13 @@ def build(font_render):
                 curbs = (not is_road(x, y - 1), not is_road(x, y + 1), not is_road(x - 1, y), not is_road(x + 1, y))
                 out[y][x] = meta(("road",) + curbs, A.road(curbs), A.PAL_STONE)
             elif k == O.TRAM:
-                d = m["tram_dir"][y][x]
-                if d == 0:
-                    horiz = (0 < x < W - 1 and (kind[y][x - 1] == O.TRAM or kind[y][x + 1] == O.TRAM))
-                    d = 1 if horiz else 2
+                horiz = (0 < x < W - 1 and (kind[y][x - 1] == O.TRAM or kind[y][x + 1] == O.TRAM))
+                d = 1 if horiz else 2
                 out[y][x] = meta(("tram", d), A.tram(d == 2), A.PAL_STONE)
             elif k == O.RAILS:
                 out[y][x] = meta("rails", A.rails(), A.PAL_STONE, SOLID)
+            elif k == O.PAVE and zoo[y][x]:
+                out[y][x] = meta("zoopath", A.pavement(), A.PAL_STONE, SOLID)
             elif k == O.WATER:
                 out[y][x] = meta("water", A.water(), A.PAL_WATER, SOLID)
             else:
@@ -130,7 +131,8 @@ def build(font_render):
     assert reach, "Ballhaus West entrance not reachable from the Hauptbahnhof"
     route_len = min(reach) + 1
     return {"W": W, "H": H, "map": out, "metas": metas, "border": border, "start": m["start"],
-            "goal": goal, "names": m["names"], "name_list": m["name_list"], "route_len": route_len}
+            "goal": goal, "names": m["names"], "name_list": m["name_list"], "route_len": route_len,
+            "tram_routes": m["tram_routes"], "rail_rows": m["rail_rows"], "hbf_rect": m["hbf_rect"]}
 
 
 def preview(res, path):
