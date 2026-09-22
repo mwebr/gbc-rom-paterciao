@@ -1,3 +1,4 @@
 build/
 tools/rgbds/
 *.wav
+__pycache__/

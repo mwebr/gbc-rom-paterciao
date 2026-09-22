@@ -15,12 +15,11 @@ DEF QUEUE_MAX  EQU 24
 DEF KICK_FREQ  EQU $700
 
 DEF SCR_TITLE   EQU 0
-DEF SCR_TIME    EQU 1
-DEF SCR_DJS     EQU 2
-DEF SCR_SCRATCH EQU 3
-DEF SCR_LOADING EQU 4
-DEF SCR_MAP     EQU 5
-DEF SCR_END     EQU 6
+DEF SCR_DJS     EQU 1
+DEF SCR_SCRATCH EQU 2
+DEF SCR_LOADING EQU 3
+DEF SCR_MAP     EQU 4
+DEF SCR_END     EQU 5
 
 DEF PADB_A      EQU 0
 DEF PADB_B      EQU 1
@@ -43,12 +42,9 @@ DEF TB_TYPE   EQU 2
 DEF TB_MORE   EQU 3
 DEF TB_END    EQU 4
 
-DEF NUM_TIMES    EQU 5
 DEF NUM_DJS      EQU 5
 DEF DJS_REAL     EQU %00101     ; SIMA (0) + PATER JOAO (2)
 DEF SCRATCH_GOAL EQU 8
-DEF DOOR_EVENT   EQU 31
-DEF TRACK_Y      EQU 8 * 16
 
 DEF COL_GREY     EQU (22 << 10) | (15 << 5) | 13
 DEF COL_GREEN    EQU (14 << 10) | (31 << 5) | 12
@@ -247,6 +243,14 @@ VBlankHandler:
     ld a, HIGH(wShadowOAM)
     call hOAMDMA
 
+    ; a streamed map row/column takes this VBlank; queue and palettes wait a frame
+    ld a, [wStreamMode]
+    and a
+    jr z, .noStream
+    call StreamFlush
+    jr .registers
+.noStream:
+
     ; VRAM writes first: they are lost if they spill past VBlank
     ld a, [wQueueLen]
     and a
@@ -280,6 +284,9 @@ VBlankHandler:
     call UploadObjPalettes
 .noPal:
 
+.registers:
+    ld a, [wWinY]
+    ldh [rWY], a
     ld a, [wScxTable]
     ldh [rSCX], a
     ld a, [wSCY]
@@ -527,13 +534,33 @@ LoadOwTiles:
     ld [wBank1Set], a
     ld hl, OwTiles
     ld bc, OwTilesEnd - OwTiles
+    jr LoadBank1
+
+LoadEndTiles:
+    ld a, [wBank1Set]
+    cp 3
+    ret z
+    ld a, 3
+    ld [wBank1Set], a
+    ld a, BANK(EndTiles)
+    ld [rROMB0], a
+    ld hl, EndTiles
+    ld bc, EndTilesEnd - EndTiles
+    jr LoadBank1Banked
+
+; hl = tiles in the tile-set bank, bc = size -> VRAM bank 1 at $8000
 LoadBank1:
+    ld a, BANK(BigFontTiles)
+    ld [rROMB0], a
+LoadBank1Banked:
     ld a, 1
     ldh [rVBK], a
     ld de, _VRAM
     call MemCopy
     xor a
     ldh [rVBK], a
+    inc a
+    ld [rROMB0], a          ; back to the default bank
     ret
 
 LoadLogo:
@@ -558,8 +585,13 @@ LoadScene:
     ret z
     ld a, d
     ld [wSceneSet], a
+    ld a, BANK(LogoTiles)
+    ld [rROMB0], a
     ld de, _VRAM + SCENE_BASE * 16
-    jp MemCopy
+    call MemCopy
+    ld a, 1
+    ld [rROMB0], a
+    ret
 
 ; --- drawing while the LCD is off ---------------------------------------
 
@@ -846,6 +878,10 @@ SECTION "TextBox", ROM0
 
 ; hl = text (NL / PG / EOT control codes)
 OpenText:
+    ld a, WIN_Y
+    ld [wWinY], a
+    xor a
+    ld [wPopupTimer], a
     ld a, l
     ld [wTbPtr], a
     ld a, h
@@ -1149,14 +1185,17 @@ ScreenReset:
     ld [wTbDone], a
     ld [wSCY], a
     ld [wRedraw], a
-    inc a
+    ld [wStreamMode], a
+    ld a, WIN_Y
+    ld [wWinY], a
+    ld a, 1
     ld [wRaster], a
     ret
 
 InitTable:
-    dw TitleInit, TimeInit, DjsInit, ScratchInit, LoadingInit, MapInit, EndInit
+    dw TitleInit, DjsInit, ScratchInit, LoadingInit, MapInit, EndInit
 UpdateTable:
-    dw TitleUpdate, TimeUpdate, DjsUpdate, ScratchUpdate, LoadingUpdate, MapUpdate, EndUpdate
+    dw TitleUpdate, DjsUpdate, ScratchUpdate, LoadingUpdate, MapUpdate, EndUpdate
 
 ; Every non-map screen: frame counter, beat flash on the background, borders.
 CommonUpdate:
@@ -1296,7 +1335,7 @@ TitleInit:
     call SetAttrRect
 
     DRAW StrVenue, 7, 2
-    DRAW StrDateLong, 9, 0, 3, 19
+    DRAW StrDateTime, 9, 0, 3, 20
     DRAW StrPressStart, 11, 4, 5, 11
     DRAW StrLineupTBA, 16, 4, 2, 12
 
@@ -1326,13 +1365,10 @@ TitleUpdate:
     xor a
     ld [wPlayTime], a
     ld [wPlayTime + 1], a
-    ld [wTramBumps], a
     ld [wDjMask], a
-    ld a, 2
-    ld [wTimeSel], a
-    ld a, 1
+    inc a
     ld [wTimerOn], a
-    ld a, SCR_TIME
+    ld a, SCR_DJS
     jp RequestScreen
 .noInput:
 
@@ -1418,125 +1454,7 @@ TitleUpdate:
     jp UpdateSparkles
 
 ; ==========================================================================
-; Setup 1/3: start time
-; ==========================================================================
-TimeInit:
-    call LoadBigFont
-    DRAW StrSetup1, 1, 2, 4, 16
-    DRAW StrPickTime, 3, 0
-    DRAW StrArrowUp, 6, 9, 3, 1
-    DRAW StrArrowDn, 10, 9, 3, 1
-    DRAW StrTimeHint, 15, 2
-    ld a, $08 | 1
-    ld de, _SCRN0 + 7 * 32 + 5
-    ld bc, (10 << 8) | 2
-    call SetAttrRect
-    ld a, 2
-    ld de, _SCRN0 + 12 * 32 + 2
-    ld bc, (16 << 8) | 1
-    call SetAttrRect
-    call TimeBigPtr
-    ld de, _SCRN0 + 7 * 32 + 5
-    call DrawBig
-    call TimeCommentPtr
-    ld de, _SCRN0 + 12 * 32 + 2
-    jp DrawText
-
-; -> hl = big "22:00" string for wTimeSel
-TimeBigPtr:
-    ld hl, TimesBig
-    jr TimeEntry
-; -> hl = small "22:00" string
-TimeSmallPtr:
-    ld hl, TimesSmall
-TimeEntry:
-    ld a, [wTimeSel]
-    ld b, a
-    add a, a
-    add a, b
-    add a, a                ; * 6
-    ADD_HL_A
-    ret
-; -> hl = comment for wTimeSel (17 bytes each)
-TimeCommentPtr:
-    ld a, [wTimeSel]
-    ld b, a
-    swap a                  ; * 16
-    add a, b                ; * 17
-    ld hl, TimeComments
-    ADD_HL_A
-    ret
-
-TimeUpdate:
-    call CommonUpdate
-
-    ; redraw in two frames: big digits (20 writes), then the comment (16)
-    ld a, [wRedraw]
-    and a
-    jr z, .noRedraw
-    dec a
-    ld [wRedraw], a
-    jr z, .comment
-    call TimeBigPtr
-    ld de, _SCRN0 + 7 * 32 + 5
-    call QueueBigText
-    jr .noRedraw
-.comment:
-    call TimeCommentPtr
-    ld de, _SCRN0 + 12 * 32 + 2
-    call QueueText
-.noRedraw:
-
-    ldh a, [hJoyPressed]
-    ld b, a
-    and (1 << PADB_UP) | (1 << PADB_RIGHT)
-    jr z, .notUp
-    ld a, [wTimeSel]
-    inc a
-    cp NUM_TIMES
-    jr c, .setTime
-    xor a
-    jr .setTime
-.notUp:
-    ld a, b
-    and (1 << PADB_DOWN) | (1 << PADB_LEFT)
-    jr z, .notDown
-    ld a, [wTimeSel]
-    dec a
-    cp NUM_TIMES
-    jr c, .setTime
-    ld a, NUM_TIMES - 1
-.setTime:
-    ld [wTimeSel], a
-    ld a, 2
-    ld [wRedraw], a
-    call SfxMove
-    jr .anim
-.notDown:
-    ld a, b
-    and (1 << PADB_A) | (1 << PADB_START)
-    jr z, .anim
-    call SfxSelect
-    ld a, SCR_DJS
-    jp RequestScreen
-
-.anim:
-    ld a, [wFrame]
-    ld e, a
-    ld a, 1
-    call RainbowPal
-    ; arrows pulse
-    ld a, [wFrame]
-    and 16
-    ld bc, (31 << 10) | (12 << 5) | 12
-    jr z, .arrowCol
-    ld bc, $7FFF
-.arrowCol:
-    ld a, 3 * 4 + 3
-    jp SetPalColor
-
-; ==========================================================================
-; Setup 2/3: book the DJs
+; Setup 1/2: book the DJs
 ; ==========================================================================
 DjsInit:
     DRAW StrSetup2, 1, 2, 4, 16
@@ -1752,7 +1670,7 @@ DjRowColor:
     jp SetPalColor
 
 ; ==========================================================================
-; Setup 3/3: warm up the turntables
+; Setup 2/2: warm up the turntables
 ; Up/Down picks a deck, Left/Right scratches, A starts/stops the platter
 ; (music plays while at least one deck spins)
 ; ==========================================================================
@@ -2098,10 +2016,9 @@ LoadingInit:
     call SetAttrRect
     DRAW LoadMsgs, 10, 2, 3, 16
     DRAW StrDJs, 13, 1, 2, 17
-    DRAW StrStartLbl, 14, 4
-    call TimeSmallPtr
-    ld de, _SCRN0 + 14 * 32 + 11
-    jp DrawText
+    DRAW StrStart, 14, 4
+    DRAW StrOsm1, 16, 1
+    ret
 
 LoadingUpdate:
     call CommonUpdate
@@ -2148,46 +2065,76 @@ LoadingUpdate:
     jp QueueText
 
 ; ==========================================================================
-; Bike ride: Karlsruhe, Marktplatz -> Europaplatz
+; Bike ride: Karlsruhe Hauptbahnhof -> Ballhaus West, Hirschstrasse 18
+; The OpenStreetMap-based map (OW_W x OW_H blocks of 16x16 px) is streamed
+; into the 32x32 tile BG ring as the camera moves, one row/column per tile.
 ; ==========================================================================
+DEF CAM_MAX_X    EQU OW_W * 16 - 160
+DEF CAM_MAX_Y    EQU OW_H * 16 - 144
+DEF CAM_OFF_X    EQU 72
+DEF CAM_OFF_Y    EQU 64
+DEF STREAM_LEN   EQU 24
+DEF WIN_Y_POPUP  EQU 128
+DEF POPUP_TIME   EQU 100
+DEF GOAL_EVENT   EQU 1
+
 MapInit:
     call LoadOwTiles
     call LoadOwSprites
     xor a
     ld [wRaster], a         ; plain scrolling: no per-line effects
-    ld hl, OwMap
-    ld de, _SCRN0
-    ld bc, 1024
-    call MemCopy
-    ld a, 1
-    ldh [rVBK], a
-    ld hl, OwAttr
-    ld de, _SCRN0
-    ld bc, 1024
-    call MemCopy
-    xor a
-    ldh [rVBK], a
     ld hl, OwPalettes
     ld de, wBasePal
     ld bc, 128
     call MemCopy
 
-    ld a, OW_START_X * 16
-    ld [wPX], a
-    ld [wPrevX], a
-    ld a, OW_START_Y * 16
-    ld [wPY], a
-    ld [wPrevY], a
-    ld a, 2                 ; facing left
+    ld hl, wPX
+    ld a, LOW(OW_START_X * 16)
+    ld [hl+], a
+    ld [hl], HIGH(OW_START_X * 16)
+    ld hl, wPY
+    ld a, LOW(OW_START_Y * 16)
+    ld [hl+], a
+    ld [hl], HIGH(OW_START_Y * 16)
+    ld a, 1                 ; facing north, towards the city
     ld [wDir], a
     xor a
     ld [wMoveCnt], a
-    ld [wLastBump], a
-    ld [wPendingEnd], a
     ld [wBumpCool], a
-    ld a, 200
-    ld [wTramX], a
+    ld [wPendingEnd], a
+    ld [wZone], a
+    ld [wPopupTimer], a
+    ld [wStreamMode], a
+
     call MapCamera
+    ld a, [wNewTX]
+    ld [wCamTX], a
+    ld a, [wNewTY]
+    ld [wCamTY], a
+
+    ; fill the whole 32x32 ring around the camera (LCD is off)
+    ld a, [wCamTY]
+    sub 4
+    ld b, a
+    ld e, 32
+.fill:
+    push bc
+    push de
+    ld a, [wCamTX]
+    sub 4
+    ld c, a
+    ld a, 32
+    call PrepRow
+    ld a, 1
+    ld [wStreamMode], a
+    call StreamFlush        ; tiles
+    call StreamFlush        ; attributes
+    pop de
+    pop bc
+    inc b
+    dec e
+    jr nz, .fill
+
     ld hl, TxtIntro
     call OpenText
     jp MapSprites
@@ -2201,20 +2148,19 @@ MapUpdate:
     dec a
     ld [wBumpCool], a
 .cool:
-
     ; Ballhaus West neon flicker
     ld a, [wFrame]
-    and $7F
-    cp 3
+    and $3F
+    cp 5
     jr z, .dim
-    cp 7
+    cp 9
     jr z, .dim
     ld bc, (24 << 10) | (8 << 5) | 31
     jr .neon
 .dim:
     ld bc, (10 << 10) | (4 << 5) | 14
 .neon:
-    ld a, 5 * 4 + 2
+    ld a, 7 * 4 + 2
     call SetPalColor
 
     call TextStep
@@ -2230,13 +2176,11 @@ MapUpdate:
     ld a, SCR_END
     jp RequestScreen
 .play:
-    ld hl, wTramX
-    dec [hl]
-    dec [hl]
     call PlayerUpdate
-    call TramCheck
 .draw:
     call MapCamera
+    call MapScroll
+    call PopupUpdate
     jp MapSprites
 
 PlayerUpdate:
@@ -2245,20 +2189,20 @@ PlayerUpdate:
     jr z, .idle
     dec a
     ld [wMoveCnt], a
-    jp StepPlayer
+    call StepPlayer
+    ld a, [wMoveCnt]
+    and a
+    ret nz
+    jp CheckZone            ; arrived on a new block
 .idle:
     ldh a, [hJoyPressed]
     bit PADB_A, a
     jr z, .noA
-    call FacingTile
-    cp $FF
-    ret z
-    ld l, a
-    ld h, HIGH(OwColl)
-    ld a, [hl]
-    and $1F
-    ret z
-    jp TriggerEvent
+    call FacingColl
+    and $7F
+    cp GOAL_EVENT
+    jp z, ReachGoal
+    ret
 .noA:
     ldh a, [hPadHeld]
     ld b, 0
@@ -2276,41 +2220,29 @@ PlayerUpdate:
 .dir:
     ld a, b
     ld [wDir], a
-    call FacingTile
-    cp $FF
-    jr z, .bump
-    ld l, a
-    ld h, HIGH(OwColl)
-    ld a, [hl]
+    call FacingColl
     bit 7, a
     jr nz, .blocked
-    ; free: start riding
-    ld a, [wPX]
-    ld [wPrevX], a
-    ld a, [wPY]
-    ld [wPrevY], a
-    xor a
-    ld [wLastBump], a
     ld a, 7
     ld [wMoveCnt], a
-    jr StepPlayer
+    jp StepPlayer
 .blocked:
-    and $1F
-    jr z, .bump
-    ld b, a                 ; riding into someone/something talks once
-    ld a, [wLastBump]
-    cp b
-    jr z, .bump
-    ld a, b
-    ld [wLastBump], a
-    jr TriggerEvent
-.bump:
+    and $7F
+    cp GOAL_EVENT
+    jp z, ReachGoal
     ld a, [wBumpCool]
     and a
     ret nz
     ld a, 16
     ld [wBumpCool], a
     jp SfxBump
+
+ReachGoal:
+    ld a, 1
+    ld [wPendingEnd], a
+    call SfxSelect
+    ld hl, TxtDoor
+    jp OpenText
 
 ; move the player 2 px in wDir (0 down, 1 up, 2 left, 3 right)
 StepPlayer:
@@ -2324,170 +2256,547 @@ StepPlayer:
     jr z, .minus
     cp 2
     jr z, .minus
-    inc [hl]
+    ld a, [hl]
+    add a, 2
+    ld [hl+], a
+    ret nc
     inc [hl]
     ret
 .minus:
-    dec [hl]
+    ld a, [hl]
+    sub 2
+    ld [hl+], a
+    ret nc
     dec [hl]
     ret
 
-; -> a = index (y * 16 + x) of the tile the player faces, $FF = outside the map
-FacingTile:
+; -> c = block x, b = block y of the player
+PlayerBlock:
+    ld a, [wPX + 1]
+    swap a
+    and $F0
+    ld c, a
     ld a, [wPX]
     swap a
     and $0F
-    ld c, a                 ; tile x
+    or c
+    ld c, a
+    ld a, [wPY + 1]
+    swap a
+    and $F0
+    ld b, a
     ld a, [wPY]
     swap a
     and $0F
-    ld b, a                 ; tile y
+    or b
+    ld b, a
+    ret
+
+; -> a = collision byte of the block the player faces
+FacingColl:
+    call PlayerBlock
     ld a, [wDir]
     and a
     jr nz, .notDown
-    ld a, b
-    cp 15
-    jr z, .outside
     inc b
-    jr .index
+    jr .look
 .notDown:
     dec a
     jr nz, .notUp
-    ld a, b
-    and a
-    jr z, .outside
     dec b
-    jr .index
+    jr .look
 .notUp:
     dec a
     jr nz, .right
-    ld a, c
-    and a
-    jr z, .outside
     dec c
-    jr .index
+    jr .look
 .right:
-    ld a, c
-    cp 15
-    jr z, .outside
     inc c
-.index:
-    ld a, b
-    swap a
-    or c
-    ret
-.outside:
-    ld a, $FF
+.look:
+    call BlockAt
+    ld l, a
+    ld h, HIGH(OwColl)
+    ld a, [hl]
     ret
 
-; a = event id: 1-15 signs/doors, 16+ NPCs, DOOR_EVENT = Ballhaus West
-TriggerEvent:
-    cp DOOR_EVENT
-    jr nz, .notDoor
-    ld a, 1
-    ld [wPendingEnd], a
-    ld hl, TxtDoor
-    jp OpenText
-.notDoor:
-    cp 16
-    jr c, .static
-    sub 16                  ; NPC index -> type
-    ld b, a
+; c = block x, b = block y -> a = metatile id (border outside the map)
+BlockAt:
+    ld a, c
+    cp OW_W
+    jr nc, .border
+    ld a, b
+    cp OW_H
+    jr nc, .border
     add a, a
-    add a, b
-    ld hl, OwNpcs + 2
+    ld l, a
+    ld h, 0
+    ld de, OwRowPtr
+    add hl, de
+    ld a, [hl+]
+    ld h, [hl]
+    ld l, a
+    ld a, c
     ADD_HL_A
     ld a, [hl]
-    ld hl, NpcTexts
-    jr .say
-.static:
-    ld hl, EventTexts
-.say:
+    ret
+.border:
+    ld a, OW_BORDER
+    ret
+
+; b = tile y, c = tile x (world) -> d = tile, e = attribute. Preserves bc.
+GetTileAt:
+    push bc
+    srl b
+    srl c
+    call BlockAt
+    pop bc
+    ld l, a
+    ld a, b
+    and 1
+    add a, a
+    ld h, a
+    ld a, c
+    and 1
+    add a, h
+    add a, HIGH(OwMtTiles)
+    ld h, a
+    ld d, [hl]
+    add a, 4
+    ld h, a
+    ld e, [hl]
+    ret
+
+; hl = position, c = centre offset, de = max -> hl = clamp(hl - c, 0, de)
+CamAxis:
+    ld a, l
+    sub c
+    ld l, a
+    ld a, h
+    sbc a, 0
+    ld h, a
+    jr nc, .notNeg
+    ld hl, 0
+    ret
+.notNeg:
+    ld a, e
+    sub l
+    ld a, d
+    sbc a, h
+    ret nc
+    ld h, d
+    ld l, e
+    ret
+
+; hl -> a = hl / 8
+TileOf:
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a, l
+    ret
+
+MapCamera:
+    ld hl, wPX
+    ld a, [hl+]
+    ld h, [hl]
+    ld l, a
+    ld c, CAM_OFF_X
+    ld de, CAM_MAX_X
+    call CamAxis
+    ld a, l
+    ld [wCamX], a
+    ld [wScxTable], a
+    ld a, h
+    ld [wCamX + 1], a
+    call TileOf
+    ld [wNewTX], a
+    ld hl, wPY
+    ld a, [hl+]
+    ld h, [hl]
+    ld l, a
+    ld c, CAM_OFF_Y
+    ld de, CAM_MAX_Y
+    call CamAxis
+    ld a, l
+    ld [wCamY], a
+    ld [wSCY], a
+    ld a, h
+    ld [wCamY + 1], a
+    call TileOf
+    ld [wNewTY], a
+    ret
+
+; the camera crossed a tile edge: queue the row/column that comes into view next
+MapScroll:
+    ld a, [wStreamMode]
+    and a
+    ret nz                  ; previous one not flushed yet
+    ld a, [wNewTX]
+    ld b, a
+    ld a, [wCamTX]
+    cp b
+    jr z, .checkY
+    ld a, b
+    ld [wCamTX], a
+    jr c, .right
+    dec a                   ; moved left: column left of the view
+    jr .column
+.right:
+    add a, 21               ; moved right: column right of the view
+.column:
+    ld c, a
+    ld a, [wCamTY]
+    sub 2
+    ld b, a
+    ld a, STREAM_LEN
+    call PrepColumn
+    ld a, 2
+    ld [wStreamMode], a
+    ret
+.checkY:
+    ld a, [wNewTY]
+    ld b, a
+    ld a, [wCamTY]
+    cp b
+    ret z
+    ld a, b
+    ld [wCamTY], a
+    jr c, .down
+    dec a
+    jr .row
+.down:
+    add a, 19
+.row:
+    ld b, a
+    ld a, [wCamTX]
+    sub 2
+    ld c, a
+    ld a, STREAM_LEN
+    call PrepRow
+    ld a, 1
+    ld [wStreamMode], a
+    ret
+
+; b = tile y, c = first tile x, a = length -> row buffer + destination
+PrepRow:
+    ld [wStreamLen], a
+    ld a, b
+    and 31
+    ld l, a
+    ld h, 0
+    add hl, hl
+    add hl, hl
+    add hl, hl
+    add hl, hl
+    add hl, hl
+    ld a, c
+    and 31
+    ld d, a
+    or l
+    ld l, a
+    ld a, h
+    add a, HIGH(_SCRN0)
+    ld [wStreamDest + 1], a
+    ld a, l
+    ld [wStreamDest], a
+    ld a, 32                ; first segment ends at the ring edge
+    sub d
+    call SetSegments
+    ld hl, wStreamTiles
+    ld a, [wStreamLen]
+.loop:
+    push af
+    push hl
+    call GetTileAt
+    pop hl
+    ld [hl], d
+    ld a, l
+    add a, 32
+    ld l, a
+    ld [hl], e
+    sub 32 - 1
+    ld l, a
+    inc c
+    pop af
+    dec a
+    jr nz, .loop
+    ret
+
+; b = first tile y, c = tile x, a = length -> column buffer + destination
+PrepColumn:
+    ld [wStreamLen], a
+    ld a, b
+    and 31
+    ld d, a
+    ld l, a
+    ld h, 0
+    add hl, hl
+    add hl, hl
+    add hl, hl
+    add hl, hl
+    add hl, hl
+    ld a, c
+    and 31
+    or l
+    ld l, a
+    ld a, h
+    add a, HIGH(_SCRN0)
+    ld [wStreamDest + 1], a
+    ld a, l
+    ld [wStreamDest], a
+    ld a, 32
+    sub d
+    call SetSegments
+    ld hl, wStreamTiles
+    ld a, [wStreamLen]
+.loop:
+    push af
+    push hl
+    call GetTileAt
+    pop hl
+    ld [hl], d
+    ld a, l
+    add a, 32
+    ld l, a
+    ld [hl], e
+    sub 32 - 1
+    ld l, a
+    inc b
+    pop af
+    dec a
+    jr nz, .loop
+    ret
+
+; a = room before the ring wraps -> wStreamN1 / wStreamN2
+SetSegments:
+    ld d, a
+    ld a, [wStreamLen]
+    cp d
+    jr c, .fits
+    ld a, d
+.fits:
+    ld [wStreamN1], a
+    ld d, a
+    ld a, [wStreamLen]
+    sub d
+    ld [wStreamN2], a
+    ret
+
+; write the prepared row/column: tiles (bank 0) in one VBlank, attributes (bank 1)
+; in the next, so each VBlank stays short. Modes: 1/2 = row/column tiles, 3/4 = attributes.
+StreamFlush:
+    ld a, [wStreamMode]
+    cp 3
+    jr nc, .attrs
+    xor a
+    ldh [rVBK], a
+    ld hl, wStreamTiles
+    call .copy
+    ld hl, wStreamMode
+    inc [hl]
+    inc [hl]
+    ret
+.attrs:
+    ld a, 1
+    ldh [rVBK], a
+    ld hl, wStreamAttrs
+    call .copy
+    xor a
+    ldh [rVBK], a
+    ld [wStreamMode], a
+    ret
+.copy:
+    ld a, [wStreamMode]
+    rra
+    jr c, .rowCopy
+    jr .colCopy
+
+.rowCopy:
+    ld a, [wStreamDest]
+    ld e, a
+    ld a, [wStreamDest + 1]
+    ld d, a
+    ld a, [wStreamN1]
+    ld b, a
+.r1:
+    ld a, [hl+]
+    ld [de], a
+    inc e
+    dec b
+    jr nz, .r1
+    ld a, [wStreamN2]
+    and a
+    ret z
+    ld b, a
+    ld a, e                 ; wrap to the start of the same map row
+    sub 32
+    ld e, a
+.r2:
+    ld a, [hl+]
+    ld [de], a
+    inc e
+    dec b
+    jr nz, .r2
+    ret
+
+.colCopy:
+    ld a, [wStreamDest]
+    ld e, a
+    ld a, [wStreamDest + 1]
+    ld d, a
+    ld a, [wStreamN1]
+    ld b, a
+.c1:
+    ld a, [hl+]
+    ld [de], a
+    ld a, e
+    add a, 32
+    ld e, a
+    jr nc, .c1n
+    inc d
+.c1n:
+    dec b
+    jr nz, .c1
+    ld a, [wStreamN2]
+    and a
+    ret z
+    ld b, a
+    ld d, HIGH(_SCRN0)      ; wrap to the top of the map
+    ld a, e
+    and 31
+    ld e, a
+.c2:
+    ld a, [hl+]
+    ld [de], a
+    ld a, e
+    add a, 32
+    ld e, a
+    jr nc, .c2n
+    inc d
+.c2n:
+    dec b
+    jr nz, .c2
+    ret
+
+; street name pop-up when entering a new street (like the location signs in the GBC games)
+CheckZone:
+    call PlayerBlock
+    srl b
+    srl c
+    ld a, b
+    add a, a
+    ld l, a
+    ld h, 0
+    ld de, OwZoneRowPtr
+    add hl, de
+    ld a, [hl+]
+    ld h, [hl]
+    ld l, a
+    ld a, c
+    ADD_HL_A
+    ld a, [hl]
+    and a
+    ret z
+    ld b, a
+    ld a, [wZone]
+    cp b
+    ret z
+    ld a, [wTbState]
+    and a
+    ret nz
+    ld a, [wQueueLen]
+    and a
+    ret nz
+    ld a, b
+    ld [wZone], a
+    ld hl, OwStreetNames
     call GetWord
     ld h, b
     ld l, c
-    jp OpenText
+    ; centre the name in 18 columns
+    push hl
+    ld b, 0
+.len:
+    ld a, [hl+]
+    cp $FF
+    jr z, .gotLen
+    inc b
+    jr .len
+.gotLen:
+    pop hl
+    ld a, 18
+    sub b
+    srl a
+    ld c, a                 ; leading spaces
+    ld de, WIN_MAP + 32 + 1
+    ld b, 18
+    and a
+    jr z, .name
+.lead:
+    xor a
+    call QueueWrite
+    inc de
+    dec b
+    dec c
+    jr nz, .lead
+.name:
+    ld a, [hl+]
+    cp $FF
+    jr z, .trail
+    call QueueWrite
+    inc de
+    dec b
+    jr nz, .name
+    jr .show
+.trail:
+    xor a
+    call QueueWrite
+    inc de
+    dec b
+    jr nz, .trail
+.show:
+    xor a
+    ld [wWindowOn], a
+    ld a, WIN_Y_POPUP
+    ld [wWinY], a
+    ld a, POPUP_TIME
+    ld [wPopupTimer], a
+    ret
 
-; the tram runs along row 8 from right to left
-TramCheck:
-    ld a, [wPY]
-    sub TRACK_Y
-    jr nc, .absY
-    cpl
-    inc a
-.absY:
-    cp 16
-    ret nc
-    ld a, [wTramX]
+PopupUpdate:
+    ld a, [wPopupTimer]
+    and a
+    ret z
     ld b, a
-    ld a, [wPX]
-    sub b                   ; player within the tram's 48 px?
-    cp 48
-    jr c, .hit
-    ld a, [wPX]
-    ld c, a
+    ld a, [wTbState]
+    and a
+    jr nz, .cancel
+    dec b
     ld a, b
-    sub c                   ; tram front less than 16 px ahead of the player?
-    cp 16
-    ret nc
-.hit:
-    ; back to where this move started, off the tracks
+    ld [wPopupTimer], a
+    cp POPUP_TIME - 4       ; the name has been written by now
+    jr nz, .notOn
+    ld a, 1
+    ld [wWindowOn], a
+    ret
+.notOn:
+    and a
+    ret nz
+.cancel:
     xor a
-    ld [wMoveCnt], a
-    ld a, [wPrevY]
-    cp TRACK_Y
-    jr nz, .setY
-    ld a, TRACK_Y + 16
-.setY:
-    ld [wPY], a
-    ld a, [wPrevX]          ; row 9 is walkable between columns 1 and 14
-    cp 16
-    jr nc, .xMin
-    ld a, 16
-.xMin:
-    cp 14 * 16 + 1
-    jr c, .xMax
-    ld a, 14 * 16
-.xMax:
-    ld [wPX], a
-    ld a, [wTramBumps]
-    cp 99
-    jr z, .maxBumps
-    inc a
-    ld [wTramBumps], a
-.maxBumps:
-    call SfxDing
-    ld hl, TxtTram
-    jp OpenText
-
-MapCamera:
-    ld a, [wPX]
-    sub 72
-    jr nc, .x1
-    xor a
-.x1:
-    cp 97
-    jr c, .x2
-    ld a, 96
-.x2:
-    ld [wScxTable], a
-    ld [wCamX], a
-    ld a, [wPY]
-    sub 56
-    jr nc, .y1
-    xor a
-.y1:
-    cp 113
-    jr c, .y2
-    ld a, 112
-.y2:
-    ld [wSCY], a
-    ld [wCamY], a
+    ld [wPopupTimer], a
+    ld a, [wTbState]
+    and a
+    ret nz
+    ld [wWindowOn], a
     ret
 
 MapSprites:
     ld hl, wShadowOAM
-    ; player
+    ; player tile by direction and pedal frame
     ld a, [wDir]
     add a, a
     ld b, a
@@ -2513,109 +2822,27 @@ MapSprites:
     jr nz, .noFlip
     ld e, $20               ; facing right = left sprite mirrored
 .noFlip:
-    ld a, [wPX]
-    ld c, a
-    ld a, [wPY]
-    ld b, a
-    call DrawObj
-
-    ; NPCs
-    ld de, OwNpcs
-    ld a, OW_NUM_NPCS
-.npc:
-    push af
-    ld a, [de]
-    ld c, a
-    inc de
-    ld a, [de]
-    ld b, a
-    inc de
-    ld a, [de]
-    inc de
-    push de
-    push hl
-    ld hl, NpcSprites
-    add a, a
-    ADD_HL_A
-    ld a, [hl+]
-    ld d, a
-    ld e, [hl]
-    pop hl
-    call DrawObj
-    pop de
-    pop af
-    dec a
-    jr nz, .npc
-
-    ; tram (3 x 16 px)
-    ld a, [wTramX]
-    ld c, a
-    ld b, TRACK_Y
-    ld d, SPR_TRAM
-    ld e, 6
-    call DrawObj
-    ld a, c
-    add a, 16
-    ld c, a
-    ld d, SPR_TRAM + 4
-    call DrawObj
-    ld a, c
-    add a, 16
-    ld c, a
-    ld d, SPR_TRAM + 8
-    jp DrawObj
-
-; 16x16 object at world (c, b), tiles d..d+3, attr e -> 2 OAM entries at hl.
-; Preserves bc, de.
-DrawObj:
-    push bc
-    ld a, c
-    ldh [hObjX], a
-    ; y on screen
-    ld a, [wCamY]
-    ld c, a
-    ld a, b
-    sub c
-    jr nc, .yBelow
-    cp 256 - 15
-    jr c, .hide
-    jr .yOk
-.yBelow:
-    cp 144
-    jr nc, .hide
-.yOk:
-    add a, 16
-    ld b, a                 ; OAM y
-    ld a, [wWindowOn]       ; keep sprites off the text box
-    and a
-    jr z, .xPos
-    ld a, b
-    cp WIN_Y + 1
-    jr nc, .hide
-.xPos:
+    ; screen position = world - camera
     ld a, [wCamX]
     ld c, a
-    ldh a, [hObjX]
+    ld a, [wPX]
     sub c
-    jr nc, .xRight
-    cp 256 - 15
-    jr c, .hide
-    jr .xOk
-.xRight:
-    cp 160
-    jr nc, .hide
-.xOk:
     add a, 8
-    ld c, a                 ; OAM x (left half)
-    ld a, b
+    ld c, a
+    ld a, [wCamY]
+    ld b, a
+    ld a, [wPY]
+    sub b
+    add a, 16
+    ld b, a
     ld [hl+], a
     ld a, c
     ld [hl+], a
     bit 5, e
     ld a, d
-    jr z, .leftTile
+    jr z, .lt
     add a, 2
-.leftTile:
+.lt:
     ld [hl+], a
     ld a, e
     ld [hl+], a
@@ -2626,63 +2853,219 @@ DrawObj:
     ld [hl+], a
     bit 5, e
     ld a, d
-    jr nz, .rightTile
+    jr nz, .rt
     add a, 2
-.rightTile:
+.rt:
     ld [hl+], a
     ld a, e
     ld [hl+], a
+    ; hl -> OAM slot 2: arrow towards Ballhaus West
+    ; b, c = player OAM y / x
+    ld a, [wTbState]
+    and a
+    jr nz, .hideArrow
+    push hl
+    push bc
+    ld hl, wPX
+    ld de, OW_GOAL_X * 16
+    call Delta16            ; hl = goal - player x
+    push hl
+    ld hl, wPY
+    ld de, OW_GOAL_Y * 16
+    call Delta16            ; hl = goal - player y
+    pop de                  ; de = dx
+    call ArrowDir           ; a = 0 down 1 up 2 left 3 right, $FF = close enough
     pop bc
+    pop hl
+    cp $FF
+    jr z, .hideArrow
+    ld d, a
+    ld a, [wFrame]          ; bob towards the target
+    and 16
+    rrca
+    rrca
+    rrca                    ; 0 or 2
+    add a, 20
+    ld e, a                 ; distance from the player
+    ld a, d
+    and a
+    jr nz, .aUp
+    ld a, b                 ; down
+    add a, e
+    ld [hl+], a
+    ld a, c
+    add a, 4
+    ld [hl+], a
+    ld a, SPR_ARROW_UP
+    ld [hl+], a
+    ld a, $41               ; Y flip, palette 1
+    ld [hl], a
     ret
-.hide:
+.aUp:
+    dec a
+    jr nz, .aLeft
+    ld a, b
+    sub e
+    ld [hl+], a
+    ld a, c
+    add a, 4
+    ld [hl+], a
+    ld a, SPR_ARROW_UP
+    ld [hl+], a
+    ld a, 1
+    ld [hl], a
+    ret
+.aLeft:
+    dec a
+    jr nz, .aRight
+    ld a, b
+    add a, 4
+    ld [hl+], a
+    ld a, c
+    sub e
+    add a, 4
+    ld [hl+], a
+    ld a, SPR_ARROW_RIGHT
+    ld [hl+], a
+    ld a, $21               ; X flip, palette 1
+    ld [hl], a
+    ret
+.aRight:
+    ld a, b
+    add a, 4
+    ld [hl+], a
+    ld a, c
+    add a, e
+    add a, 4
+    ld [hl+], a
+    ld a, SPR_ARROW_RIGHT
+    ld [hl+], a
+    ld a, 1
+    ld [hl], a
+    ret
+.hideArrow:
     xor a
-    REPT 8
-        ld [hl+], a
-    ENDR
-    pop bc
+    ld [hl], a
+    ret
+
+; hl -> 16-bit position, de = target -> hl = target - position (signed)
+Delta16:
+    ld a, [hl+]
+    ld h, [hl]
+    ld l, a
+    ld a, e
+    sub l
+    ld l, a
+    ld a, d
+    sbc a, h
+    ld h, a
+    ret
+
+; de = dx, hl = dy -> a = direction of the larger axis, $FF when both are small
+ArrowDir:
+    ld b, 1                 ; up if dy < 0
+    bit 7, h
+    jr nz, .dyNeg
+    ld b, 0
+    jr .dyAbs
+.dyNeg:
+    call NegHL
+.dyAbs:
+    ld c, 3                 ; right if dx >= 0
+    bit 7, d
+    jr z, .dxAbs
+    ld c, 2
+    push hl
+    ld h, d
+    ld l, e
+    call NegHL
+    ld d, h
+    ld e, l
+    pop hl
+.dxAbs:
+    ; both within 40 px -> no arrow
+    ld a, h
+    or d
+    jr nz, .far
+    ld a, l
+    cp 40
+    jr nc, .far
+    ld a, e
+    cp 40
+    jr nc, .far
+    ld a, $FF
+    ret
+.far:
+    ; |dy| > |dx| ?
+    ld a, e
+    sub l
+    ld a, d
+    sbc a, h
+    ld a, b
+    ret c
+    ld a, c
+    ret
+
+NegHL:
+    xor a
+    sub l
+    ld l, a
+    ld a, 0
+    sbc a, h
+    ld h, a
     ret
 
 PlayerTiles:
     db SPR_BIKE_D0, SPR_BIKE_D1, SPR_BIKE_U0, SPR_BIKE_U1
     db SPR_BIKE_L0, SPR_BIKE_L1, SPR_BIKE_L0, SPR_BIKE_L1
 
-; per NPC type: tile, OAM attribute (palette)
-NpcSprites:
-    db SPR_PERSON, 1        ; oma
-    db SPR_WORKER, 3        ; construction worker
-    db SPR_PERSON, 2        ; doener guy
-    db SPR_GOAT, 5          ; the goat
-    db SPR_BOUNCER, 4       ; bouncer
+; ==========================================================================
+; Ending: night at Ballhaus West
+; ==========================================================================
+DEF NUM_CONFETTI EQU 12
 
-; ==========================================================================
-; Ending
-; ==========================================================================
 EndInit:
     xor a
     ld [wTimerOn], a
-    call LoadBigFont
-    ld hl, BigEnka
-    ld de, _SCRN0 + 1 * 32 + 6
-    call DrawBig
-    ld a, $08 | 1
-    ld de, _SCRN0 + 1 * 32 + 6
-    ld bc, (8 << 8) | 2
+    call LoadEndTiles
+    ; picture: tile rows 0-13 (tiles + attributes live in ROM bank 3)
+    ld a, BANK(EndMap)
+    ld [rROMB0], a
+    ld hl, EndMap
+    ld de, _SCRN0
+    ld bc, (20 << 8) | 14
+    call CopyRect
+    ld a, 1
+    ldh [rVBK], a
+    ld hl, EndAttr
+    ld de, _SCRN0
+    ld bc, (20 << 8) | 14
+    call CopyRect
+    xor a
+    ldh [rVBK], a
+    ld a, 1
+    ld [rROMB0], a
+    ; clear the bottom border row
+    ld hl, _SCRN0 + 17 * 32
+    ld b, 32
+    xor a
+    call FillBytes
+    ld a, 0
+    ld de, _SCRN0 + 17 * 32
+    ld bc, (32 << 8) | 1
     call SetAttrRect
-    DRAW StrMadeIt, 4, 4, 4, 12
-    DRAW StrDateShort, 6, 3, 3, 14
-    DRAW StrStartLbl, 7, 4, 3, 12
-    call TimeSmallPtr
-    ld de, _SCRN0 + 7 * 32 + 11
-    call DrawText
-    DRAW StrBallhaus, 8, 3
-    DRAW StrEuropaplatz, 9, 4
-    DRAW StrKarlsruhe, 10, 5
-    DRAW StrDJs, 11, 1, 2, 17
-    DRAW StrRideTime, 13, 2
-    DRAW StrTramBumps, 14, 3
-    DRAW StrPressStart, 16, 4, 5, 11
 
-    ; ride time m:ss (capped at 9:59)
+    ld hl, EndPalettes
+    ld de, wBasePal
+    ld bc, 128
+    call MemCopy
+
+    DRAW StrDateTime, 14, 0, 7, 20
+    DRAW StrDJs, 15, 1, 6, 17
+    DRAW StrYourTime, 16, 2
+    DRAW StrSeeYou, 17, 3, 6, 14
+
+    ; play time m:ss (capped at 9:59)
     ld hl, wPlayTime
     ld a, [hl+]
     ld h, [hl]
@@ -2714,40 +3097,36 @@ EndInit:
     call TwoDigits
     ld [hl], $FF
     ld hl, wBuf
-    ld de, _SCRN0 + 13 * 32 + 13
+    ld de, _SCRN0 + 16 * 32 + 13
     call DrawText
 
-    ld hl, wBuf
-    ld a, [wTramBumps]
-    cp 10
-    jr nc, .twoDigits
-    add a, CH_0
-    ld [hl+], a
-    jr .bumpsDone
-.twoDigits:
-    call TwoDigits
-.bumpsDone:
-    ld [hl], $FF
-    ld hl, wBuf
-    ld de, _SCRN0 + 14 * 32 + 15
-    call DrawText
+    ; confetti
+    ld hl, wConfetti
+    ld c, NUM_CONFETTI
+.conf:
+    call Rand
+    ld [hl+], a             ; x
+    call Rand
+    and $7F
+    ld [hl+], a             ; y
+    call Rand
+    ld [hl+], a             ; phase
+    dec c
+    jr nz, .conf
 
-    ld hl, wLevels
-    ld b, 8
-    xor a
-    call FillBytes
-    ld [wEvKick], a
-    ld [wEvBass], a
-    ld [wEvStab], a
-    ld [wEvClap], a
-    ld [wEvHat], a
-
-    ld bc, (40 << 8) | 63
-    ld de, (0 << 8) | 15
+    ld bc, (48 << 8) | 63
+    ld de, (4 << 8) | 15
     jp InitSparkles
 
 EndUpdate:
-    call CommonUpdate
+    ld hl, wFrame
+    inc [hl]
+    ld a, [wBeatFlash]
+    and a
+    jr z, .noDecay
+    dec a
+    ld [wBeatFlash], a
+.noDecay:
     ldh a, [hJoyPressed]
     and (1 << PADB_START) | (1 << PADB_A)
     jr z, .stay
@@ -2755,151 +3134,99 @@ EndUpdate:
     ld a, SCR_TITLE
     jp RequestScreen
 .stay:
+    ; ENKA rainbow
     ld a, [wFrame]
     ld e, a
     ld a, 1
     call RainbowPal
+    ; search lights: colour cycle, white flash on the kick
+    ld a, [wBeatFlash]
+    cp 5
+    ld bc, $7FFF
+    jr nc, .beam
     ld a, [wFrame]
-    add a, 16
-    ld e, a
-    ld a, 4
-    call RainbowPal
+    srl a
+    srl a
+    and 31
+    ld hl, RainbowHi
+    call GetWord
+.beam:
+    ld a, 2 * 4 + 2
+    call SetPalColor
+    ; twinkling stars
+    ld a, [wFrame]
+    and 24
+    ld bc, $7FFF
+    jr nz, .star
+    ld bc, (20 << 10) | (18 << 5) | 18
+.star:
+    ld a, 2 * 4 + 3
+    call SetPalColor
+    ; neon flicker
+    ld a, [wFrame]
+    and $3F
+    cp 7
+    ld bc, (24 << 10) | (8 << 5) | 31
+    jr nz, .neon
+    ld bc, (10 << 10) | (4 << 5) | 14
+.neon:
+    ld a, 4 * 4 + 2
+    call SetPalColor
+    ; crowd rim light pulses with the beat
+    ld a, [wBeatFlash]
+    and a
+    ld bc, (28 << 10) | (18 << 5) | 31
+    jr nz, .rim
+    ld bc, (16 << 10) | (6 << 5) | 18
+.rim:
+    ld a, 5 * 4 + 3
+    call SetPalColor
     call UpdateSparkles
-    ; fall through: party bars
 
-; 8 equalizer bars dancing to the music, behind the text (OAM slots 8-23)
-PartyBars:
-    ld hl, wLevels
-    ld b, 8
-.decay:
-    ld a, [hl]
-    sub 2
-    jr nc, .decayOk
-    xor a
-.decayOk:
+    ; confetti in OAM slots 8-19
+    ld hl, wConfetti
+    ld de, wShadowOAM + 8 * 4
+    ld c, NUM_CONFETTI
+.conf:
+    ld a, [hl+]             ; x
+    ld b, a
+    ld a, [hl]              ; y
+    inc a
     ld [hl+], a
-    dec b
-    jr nz, .decay
-
-    ld hl, wEvKick
-    ld a, [hl]
-    and a
-    jr z, .noKick
-    ld [hl], 0
-    ld hl, wLevels + 0
-    ld a, 80
-    call SetBarPair
-.noKick:
-    ld hl, wEvBass
-    ld a, [hl]
-    and a
-    jr z, .noBass
-    ld [hl], 0
-    add a, 30
-    ld hl, wLevels + 2
-    call SetBarPair
-.noBass:
-    ld hl, wEvStab
-    ld a, [hl]
-    and a
-    jr z, .noStab
-    ld [hl], 0
-    ld hl, wLevels + 4
-    ld a, 72
-    call SetBarPair
-.noStab:
-    ld hl, wEvClap
-    ld a, [hl]
-    and a
-    jr z, .noClap
-    ld [hl], 0
-    ld a, 78
-    ld [wLevels + 6], a
-.noClap:
-    ld hl, wEvHat
-    ld a, [hl]
-    and a
-    jr z, .noHat
-    ld [hl], 0
-    call Rand
-    and 15
-    add a, 40
-    ld [wLevels + 7], a
-.noHat:
-
-    ; 2 segments per bar, height = level / 2
-    ld hl, wShadowOAM + 8 * 4
-    ld de, wLevels
-    ld c, 28                ; OAM x of first bar
-.bar:
-    ld a, [de]
+    cp 136                  ; stop above the text
+    jr c, .onScreen
+    xor a
+    dec hl
+    ld [hl+], a
+.onScreen:
+    add a, 16
+    ld [de], a
+    inc de
+    ld a, [hl]              ; phase -> sway
+    inc [hl]
+    inc hl
+    push hl
     push de
-    srl a
-    ld b, a
-    ld d, 136               ; OAM y of bottom segment (screen rows 120-135)
-    ld e, 0
-.seg:
-    ld a, b
-    cp 16
-    jr c, .partial
-    sub 16
-    ld b, a
-    ld a, SPR_BAR + 14
-    jr .put
-.partial:
-    cp 2
-    jr c, .hide
-    srl a
-    dec a
-    add a, a
-    add a, SPR_BAR
-    ld b, 0
-    jr .put
-.hide:
-    xor a
-    ld [hl+], a
-    ld [hl+], a
-    ld [hl+], a
-    ld [hl+], a
-    jr .next
-.put:
-    push af
-    ld a, d
-    ld [hl+], a
-    ld a, c
-    ld [hl+], a
-    pop af
-    ld [hl+], a
-    ld a, e
-    add a, $80 | 4          ; behind the text, green / yellow
-    ld [hl+], a
-.next:
-    ld a, d
-    sub 16
-    ld d, a
-    inc e
-    ld a, e
-    cp 2
-    jr nz, .seg
+    ld e, a
+    ld d, HIGH(SineTab)
+    ld a, [de]
     pop de
+    pop hl
+    sra a
+    sra a
+    add a, b
+    ld [de], a
+    inc de
+    ld a, SPR_CONFETTI
+    ld [de], a
     inc de
     ld a, c
-    add a, 16
-    ld c, a
-    cp 28 + 16 * 8
-    jr nz, .bar
-    ret
-
-; a = level for bar pair, hl -> first bar level (adds some jitter to the 2nd)
-SetBarPair:
-    ld [hl+], a
-    ld b, a
-    call Rand
-    and 15
-    ld c, a
-    ld a, b
-    sub c
-    ld [hl], a
+    and 3
+    add a, 4                ; OBJ palettes 4-7
+    ld [de], a
+    inc de
+    dec c
+    jr nz, .conf
     ret
 
 INCLUDE "sound.asm"
@@ -2968,7 +3295,6 @@ wTbDest:     dw
 ; game state
 wTimerOn:    db
 wPlayTime:   dw
-wTimeSel:    db
 wDjSel:      db
 wDjMask:     db
 wDjsDone:    db
@@ -2978,19 +3304,33 @@ wScratchOn:  db
 wScratchCnt: db
 
 ; overworld
-wPX:         db
-wPY:         db
-wPrevX:      db
-wPrevY:      db
+wPX:         dw                 ; player position in pixels
+wPY:         dw
+wCamX:       dw
+wCamY:       dw
+wCamTX:      db                 ; camera position in tiles (last streamed)
+wCamTY:      db
+wNewTX:      db
+wNewTY:      db
 wDir:        db                 ; 0 down, 1 up, 2 left, 3 right
 wMoveCnt:    db
-wLastBump:   db
 wBumpCool:   db
 wPendingEnd: db
-wTramX:      db
-wTramBumps:  db
-wCamX:       db
-wCamY:       db
+wZone:       db
+wPopupTimer: db
+wWinY:       db
+wStreamMode: db                 ; 0 none, 1/2 row/column tiles, 3/4 attributes
+wStreamLen:  db
+wStreamN1:   db
+wStreamN2:   db
+wStreamDest: dw
+wConfetti:   ds 12 * 3
+
+SECTION "Stream buffer", WRAM0, ALIGN[6]
+wStreamTiles: ds 32
+wStreamAttrs: ds 32
+
+SECTION "More variables", WRAM0
 
 ; sound driver
 wMusicOn:    db

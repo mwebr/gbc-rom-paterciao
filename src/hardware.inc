@@ -42,3 +42,4 @@ DEF _VRAM  EQU $8000
 DEF _SCRN0 EQU $9800
 DEF rWY    EQU $FF4A
 DEF rWX    EQU $FF4B
+DEF rROMB0  EQU $2000          ; MBC5 ROM bank (low 8 bits)

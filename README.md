@@ -1,18 +1,17 @@
 # ENKA @ Ballhaus West — Game Boy Color promo
 
-Promo cartridge for ENKA @ Ballhaus West (Europaplatz, Karlsruhe), Thursday 29.10.2026.
-32 KiB ROM, no MBC, Game Boy Color only: `enka.gbc`. Classic house soundtrack from boot.
+Promo cartridge for ENKA @ Ballhaus West (Hirschstraße 18, Karlsruhe), Thursday 29.10.2026, 18:00.
+64 KiB ROM, MBC5, Game Boy Color only: `enka.gbc`. Classic house soundtrack from boot.
 
 ## How it plays (about a minute)
 
-1. **Title** — ENKA, date, venue. Line-up: ???. Press START.
-2. **Setup 1/3** — pick the start time (Up/Down, A).
-3. **Setup 2/3** — book two DJs. Not everyone on the list makes the cut.
-4. **Setup 3/3** — warm up the decks: 8 scratches (Left/Right), Up/Down switches deck, A starts/stops a platter.
-5. **Loading party...**
-6. **Bike ride** — from the Marktplatz pyramid to Ballhaus West. D-pad rides, A talks/reads.
-   Mind the roadworks and the tram.
-7. **Ending** — your picks, your time, tram bumps. START plays again.
+1. **Title** — ENKA, date, 18:00, venue. Line-up: ???. Press START.
+2. **Setup 1/2** — book two DJs. Not everyone on the list makes the cut.
+3. **Setup 2/2** — warm up the decks: 8 scratches (Left/Right), Up/Down switches deck, A starts/stops a platter.
+4. **Loading party...**
+5. **Bike ride** — from Karlsruhe Hauptbahnhof through the real streets to Ballhaus West.
+   The map is generated from OpenStreetMap data; street names pop up as you ride, the arrow points the way.
+6. **Ending** — night scene at Ballhaus West, the line-up and your time. START plays again.
 
 ## Build
 
@@ -29,4 +28,10 @@ Or point `RGBDS=/path/to/bin/` at an existing install.
 - `src/main.asm` — screens, text box, overworld, ending
 - `src/sound.asm` — music driver and sound effects
 - `src/text.asm` — all dialogue and on-screen text
-- `tools/gen.py` — generates font, logo, turntables, city map, sprites, palettes and the song
+- `tools/gen.py` — generates fonts, logo, turntables, sprites, palettes and the song
+- `tools/osmmap.py`, `tools/owbuild.py`, `tools/owart.py` — OpenStreetMap extract → 16×16 block map in the
+  style of the Game Boy Color Pokémon games (original tiles)
+- `tools/ending.py` — the ending illustration
+- `tools/osm/` — OpenStreetMap extract of the area
+
+Map data © OpenStreetMap contributors, available under the Open Database License (ODbL).

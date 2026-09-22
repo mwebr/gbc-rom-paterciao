@@ -10,6 +10,7 @@ Writes into build/gen/:
 import colorsys
 import math
 import os
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "build", "gen")
@@ -195,6 +196,7 @@ SPRITES = {
     "SPR_SPARK1": ["........", "........", "...2....", "..232...", "...2....", "........", "........", "........"] + EMPTY8,
     "SPR_SPARK2": ["...1....", "...2....", "..121...", "1223221.", "..121...", "...2....", "...1....", "........"] + EMPTY8,
     "SPR_DOT": ["........", "........", "..333...", "..333...", "..333...", "........", "........", "........"] + EMPTY8,
+    "SPR_CONFETTI": ["........", "........", "..332...", "..322...", "........", "........", "........", "........"] + EMPTY8,
 }
 for name, rows in SPRITES.items():
     defs.append((name, len(bank0)))
@@ -299,71 +301,28 @@ scene_deck, idx = new_scene()
 deck_map = [tileset_add(scene_deck, idx, t) for t in cut(deck)]
 
 # --- scene: overworld sprites (16x16 = two 8x16 halves) --------------------------
-BIKE_D = [
-    ".....111111.....", "....11111111....", "....13333331....", "....13133131....", "....13333331....",
-    ".....133331.....", "....12222221....", "...3122222213...", "..311111111113..", "....12222221....",
-    "....11222211....", "....1.1111.1....",
+# player on a bike, Gold/Silver style proportions: 1 = outline, 2 = jacket/cap, 3 = skin/white
+BIKE_D_TOP = [
+    ".....111111.....", "....12222221....", "...1222222221...", "...1111111111...", "...1333333331...",
+    "...1313333131...", "....13333331....", "...1122222211...", "..312222222213..", "..111111111111..",
+    "....12222221....", "....11111111....",
 ]
-BIKE_D0 = ["................"] + BIKE_D + ["....1..11.......", "......1111......", ".......11......."]
-BIKE_D1 = ["................"] + BIKE_D + [".......11..1....", "......1111......", ".......11......."]
-BIKE_U = [
-    ".....111111.....", "....11111111....", "....11111111....", "....11111111....", "....31111113....",
-    ".....133331.....", "....12222221....", "...3122222213...", "...3122222213...", "....12222221....",
-    "....11111111....", "....1.1111.1....",
+BIKE_D0 = BIKE_D_TOP + ["....1.1331.1....", "....1..11.......", "......1111......", ".......11......."]
+BIKE_D1 = BIKE_D_TOP + ["....1.1331.1....", ".......11..1....", "......1111......", ".......11......."]
+BIKE_U_TOP = [
+    ".....111111.....", "....12222221....", "...1222222221...", "...1222222221...", "...1111111111...",
+    "...3111111113...", "....11111111....", "...1122222211...", "..312222222213..", "..311222222113..",
+    "....12222221....", "....11111111....",
 ]
-BIKE_U0 = ["................"] + BIKE_U + ["....1..11.......", "......1111......", ".......11......."]
-BIKE_U1 = ["................"] + BIKE_U + [".......11..1....", "......1111......", ".......11......."]
-BIKE_L = [
-    "................", ".....11111......", "....1111111.....", "....3131111.....", "....3333111.....",
-    ".....33311......", ".....12221......", "....1222221.....", "..331222221.....", "..2.1222221.....",
-    "..2..111111.....", ".121..11...111..",
+BIKE_U0 = BIKE_U_TOP + ["....1.1331.1....", "....1..11.......", "......1111......", ".......11......."]
+BIKE_U1 = BIKE_U_TOP + ["....1.1331.1....", ".......11..1....", "......1111......", ".......11......."]
+BIKE_L_TOP = [
+    ".....11111......", "....1222221.....", "...122222221....", "..11111111111...", "...133331111....",
+    "...313331111....", "....1333111.....", ".....122221.....", "...331222221....", "..1..122221.....",
+    "..1...11111.....", ".111..1..1.111..",
 ]
-BIKE_L0 = BIKE_L + ["1.2.1..1..1...1.", "1.2.1.111.1.2.1.", "1...1.....1...1.", ".111.......111.."]
-BIKE_L1 = BIKE_L + ["1.2.1.1...1...1.", "1.2.1..11.1.2.1.", "1...1.....1...1.", ".111.......111.."]
-PERSON = [
-    "................", "......1111......", ".....111111.....", ".....133331.....", ".....313313.....",
-    ".....133331.....", "......1331......", "....11222211....", "...1222222221...", "...3122222213...",
-    "...3122222213...", "....12222221....", "....11111111....", "....111..111....", "....11....11....",
-    "....11....11....",
-]
-WORKER = [
-    "................", "......2222......", ".....222222.....", "....22222222....", ".....313313.....",
-    ".....133331.....", "......1331......", "....11222211....", "...1222222221...", "...3122222213...",
-    "...3122222213...", "....12222221....", "....11111111....", "....111..111....", "....11....11....",
-    "....11....11....",
-]
-BOUNCER = [
-    "................", "......1111......", ".....111111.....", ".....133331.....", ".....111111.....",
-    ".....133331.....", "......1331......", "...1112222111...", "..122222222221..", "..122222222221..",
-    "..312222222213..", "...1222222221...", "...1111111111...", "....111..111....", "....11....11....",
-    "...111....111...",
-]
-GOAT = [
-    "................", "...1.1..........", "...1.1..........", "..12221.........", ".1212221........",
-    ".12222211111111.", ".311222222222221", ".33.122222222221", "...1222222222221", "...1222222222221",
-    "...1111111111111", "...1.1.....1.1..", "...1.1.....1.1..", "...1.1.....1.1..", "..11.11...11.11.",
-    "................",
-]
-
-# tram, 48x16, drawn procedurally: 1 = outline, 2 = body, 3 = windows
-tram = blank(48, 16)
-for y in range(2, 15):
-    for x in range(0, 48):
-        if (x < 2 and y < 4) or (x < 1 and y > 12):
-            continue
-        edge = y in (2, 14) or x in (0, 47)
-        c = 1 if edge else 2
-        if 4 <= y <= 8 and 3 <= x <= 45:
-            c = 1 if x % 8 in (2, 3) or y in (4, 8) else 3
-        if y == 11:
-            c = 3 if 2 <= x <= 45 else c
-        tram[y][x] = c
-for x in range(18, 30):
-    tram[0][x] = 1 if x in (18, 29) or x % 3 == 0 else 0
-    tram[1][x] = 1 if x in (20, 27) else 0
-for cx in (8, 38):
-    for x in range(cx - 3, cx + 3):
-        tram[15][x] = 1
+BIKE_L0 = BIKE_L_TOP + ["1...1..1..1...1.", "1.1.1.111.1.1.1.", "1...1.....1...1.", ".111.......111.."]
+BIKE_L1 = BIKE_L_TOP + ["1...1.1...1...1.", "1.1.1..11.1.1.1.", "1...1.....1...1.", ".111.......111.."]
 
 scene_ow, idx = new_scene()
 
@@ -377,14 +336,20 @@ def add_sprite16(name, rows, scene):
     scene[1] += [left[:8], left[8:], right[:8], right[8:]]
 
 
+def add_sprite8(name, rows, scene):
+    px = parse_sprite(rows)
+    defs.append((name, scene[0] + len(scene[1])))
+    scene[1] += [px[:8], px[8:]]
+
+
 for name, rows in [("SPR_BIKE_D0", BIKE_D0), ("SPR_BIKE_D1", BIKE_D1), ("SPR_BIKE_U0", BIKE_U0),
-                   ("SPR_BIKE_U1", BIKE_U1), ("SPR_BIKE_L0", BIKE_L0), ("SPR_BIKE_L1", BIKE_L1),
-                   ("SPR_PERSON", PERSON), ("SPR_WORKER", WORKER), ("SPR_BOUNCER", BOUNCER), ("SPR_GOAT", GOAT)]:
+                   ("SPR_BIKE_U1", BIKE_U1), ("SPR_BIKE_L0", BIKE_L0), ("SPR_BIKE_L1", BIKE_L1)]:
     assert len(rows) == 16 and all(len(r) == 16 for r in rows), name
     add_sprite16(name, rows, scene_ow)
-defs.append(("SPR_TRAM", scene_ow[0] + len(scene_ow[1])))
-for i in range(3):
-    add_sprite16(f"_tram{i}", [r[i * 16:i * 16 + 16] for r in tram], scene_ow)
+add_sprite8("SPR_ARROW_UP", ["...11...", "..1331..", ".133331.", "13333331", "11133111", "..1331..", "..1331..",
+                             "..1111.."] + ["........"] * 8, scene_ow)
+add_sprite8("SPR_ARROW_RIGHT", ["....1...", "....11..", "111131..", "13333331", "13333331", "111131..", "....11..",
+                                "....1..."] + ["........"] * 8, scene_ow)
 
 for name, sc in [("logo", scene_logo), ("deck", scene_deck), ("overworld sprites", scene_ow)]:
     assert SCENE_BASE + len(sc[1]) <= 256, (name, len(sc[1]))
@@ -402,284 +367,69 @@ for ch in FONT_ORDER:
 assert len(bigfont) <= 256, len(bigfont)
 
 # --------------------------------------------------------------------------
-# Overworld: Karlsruhe, from the Marktplatz pyramid to Ballhaus West @ Europaplatz
-# 16x16 metatiles, map is 16x16 metatiles = 256x256 px (no streaming needed)
+# Overworld: Karlsruhe Hauptbahnhof -> Ballhaus West (Hirschstrasse 18), from OpenStreetMap
 # --------------------------------------------------------------------------
-OW_MAP = [
-    "TTTTTTTTTTTTTTTT",
-    "TRRRRRRRRRRTPP:T",
-    "TWDWWDWWDWWKPP:T",
-    "T:::::X:::::S:oT",
-    "T:::::Xw:::::@:T",
-    "TTTTTTTTT|TT,,,T",
-    "TRRRRRR,,|,RRR,T",
-    "TWWDWWW,,|,WDW,T",
-    "----------------",
-    "T==============T",
-    "TbbbbbE::.,..,.T",
-    "TFFFFF:d:.,..,.T",
-    "THHOHH:::T.,g,.T",
-    "T:k:::::.T,..,.T",
-    "T::::::::TT.,..T",
-    "TTTTTTTTTTTTTTTT",
-]
-NPC_TYPES = {"o": 0, "w": 1, "d": 2, "g": 3, "k": 4}   # oma, worker, doener guy, goat, bouncer
-NPC_GROUND = {"g": "."}
-EVENTS = {"S": 1, "E": 2, "D": 3, "K": 4, "X": 5, "O": 31}
-SOLID = set("TRWPbFHSEDKXO")
-OW_PAL = {".": 1, "T": 1, ",": 7, ":": 2, "=": 2, "|": 2, "-": 2, "R": 3, "W": 3, "D": 3,
-          "P": 4, "b": 5, "F": 5, "H": 5, "O": 5, "S": 6, "E": 6, "K": 6, "X": 6}
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import owbuild  # noqa: E402
 
-
-def mt_new(c=0):
-    return [[c] * 16 for _ in range(16)]
-
-
-def mt_grass():
-    m = mt_new(0)
-    for x, y in [(2, 3), (10, 1), (12, 9), (4, 11), (8, 6), (13, 13)]:
-        m[y][x] = m[y][x + 2] = 1
-        m[y + 1][x + 1] = 1
-    return m
-
-
-def mt_cobble(mortar=1):
-    m = mt_new(0)
-    for y in range(16):
-        for x in range(16):
-            if y % 4 == 3 or (x + (4 if (y // 4) % 2 else 0)) % 8 == 7:
-                m[y][x] = mortar
-    return m
-
-
-def mt_road(vertical=False):
-    m = mt_new(1)
-    for x, y in [(3, 2), (11, 4), (6, 12), (13, 10), (1, 9)]:
-        m[y][x] = 2
-    for i in range(16):
-        m[0][i] = m[15][i] = 2
-        if (i // 4) % 2 == 0:
-            m[7][i] = m[8][i] = 3
-    if vertical:
-        m = [list(r) for r in zip(*m)]
-    return m
-
-
-def mt_tracks():
-    m = mt_cobble()
-    for y in range(3, 13):
-        for x in range(16):
-            if x % 4 in (1, 2):
-                m[y][x] = 1
-    for x in range(16):
-        m[4][x] = m[10][x] = 3
-        m[5][x] = m[11][x] = 2
-    return m
-
-
-def mt_tree():
-    m = mt_grass()
-    for y in range(16):
-        for x in range(16):
-            d = math.hypot(x + 0.5 - 8, y + 0.5 - 6.5)
-            if d <= 7:
-                m[y][x] = 2 if x + y > 17 else 1
-                if d > 6:
-                    m[y][x] = 3
-                if (x, y) in ((5, 3), (6, 3), (5, 4), (9, 5)):
-                    m[y][x] = 0
-    for y in range(12, 16):
-        for x in range(6, 10):
-            m[y][x] = 3 if x in (6, 9) else 2
-    return m
-
-
-def mt_flowers():
-    m = mt_grass()
-    for i, (x, y) in enumerate([(3, 3), (11, 5), (6, 10), (12, 12)]):
-        petal = 1 if i % 2 == 0 else 2
-        for dx, dy in [(0, -1), (-1, 0), (1, 0), (0, 1)]:
-            m[y + dy][x + dx] = petal
-        m[y][x] = 3 if petal == 1 else 1
-    return m
-
-
-def mt_roof():
-    m = mt_new(1)
-    for y in range(16):
-        for x in range(16):
-            if y % 4 == 3 or y == 15:
-                m[y][x] = 2
-            elif (x + (2 if (y // 4) % 2 else 0)) % 4 == 0 and y % 4 == 1:
-                m[y][x] = 2
-    return m
-
-
-def mt_wall():
-    m = mt_new(0)
-    draw_rect(m, 4, 3, 11, 10, 2)
-    draw_rect(m, 5, 4, 10, 9, 3)
-    draw_rect(m, 7, 4, 8, 9, 2)
-    draw_rect(m, 5, 6, 10, 6, 2)
-    for x in range(16):
-        m[15][x] = 2
-    return m
-
-
-def mt_door():
-    m = mt_new(0)
-    draw_rect(m, 4, 2, 11, 15, 2)
-    draw_rect(m, 5, 3, 10, 15, 1)
-    draw_rect(m, 6, 5, 9, 7, 3)
-    m[10][9] = 0
-    for x in range(16):
-        if x < 4 or x > 11:
-            m[15][x] = 2
-    return m
-
-
-def mt_sign():
-    m = mt_cobble(3)
-    draw_rect(m, 7, 9, 8, 15, 3)
-    draw_rect(m, 1, 1, 14, 9, 1)
-    draw_rect(m, 2, 2, 13, 8, 2)
-    for x in range(3, 13):
-        if x % 3 != 2:
-            m[4][x] = 3
-        if x % 4 != 3 and x < 10:
-            m[6][x] = 3
-    return m
-
-
-def mt_barrier():
-    m = mt_cobble(3)
-    for y in range(3, 9):
-        for x in range(16):
-            m[y][x] = 1 if ((x + y) // 3) % 2 else 2
-    for y in range(9, 15):
-        for x in (2, 3, 12, 13):
-            m[y][x] = 3
-    draw_rect(m, 2, 0, 3, 2, 1)
-    return m
-
-
-def mt_bh_roof():
-    m = mt_new(1)
-    for y in range(16):
-        for x in range(16):
-            if y % 4 == 3:
-                m[y][x] = 0
-    return m
-
-
-def mt_bh_wall():
-    m = mt_new(0)
-    for y in range(16):
-        for x in range(16):
-            if y % 4 == 3 and x % 2 == 0:
-                m[y][x] = 1
-    draw_rect(m, 5, 4, 10, 8, 1)
-    draw_rect(m, 6, 5, 9, 7, 2)
-    return m
-
-
-def mt_bh_door():
-    m = mt_new(0)
-    draw_rect(m, 3, 1, 12, 15, 2)
-    draw_rect(m, 4, 2, 11, 15, 1)
-    draw_rect(m, 7, 2, 8, 15, 0)
-    draw_rect(m, 5, 4, 6, 6, 3)
-    draw_rect(m, 9, 4, 10, 6, 3)
-    m[10][6] = m[10][9] = 3
-    return m
-
-
-def pyramid_img():
-    m = [[0] * 32 for _ in range(32)]
-    for y in range(2, 32):
-        hw = (y - 2) * 15 / 29 + 1
-        for x in range(32):
-            dx = x + 0.5 - 16
-            if abs(dx) <= hw:
-                c = 1 if dx < 0 else 2
-                if abs(dx) > hw - 1.2 or y == 31:
-                    c = 3
-                elif dx < 0 and y % 5 == 0:
-                    c = 2
-                m[y][x] = c
-    return m
-
-
-def facade_img():
-    """'BALLHAUS' / 'WEST' in neon (colour 2) with purple glow (1) on the dark wall."""
-    m = [[0] * 80 for _ in range(16)]
-    for text, row, x0 in (("BALLHAUS", 0, 8), ("WEST", 8, 24)):
-        for i, ch in enumerate(text):
-            g = render(FONT[ch], 1, 1, 0, 1, 8, 8, lambda y: 2)
-            for y in range(8):
-                for x in range(8):
-                    if g[y][x]:
-                        m[row + y][x0 + i * 8 + x] = g[y][x]
-    return m
-
-
-METATILES = {
-    ".": mt_grass(), "T": mt_tree(), ",": mt_flowers(), ":": mt_cobble(), "=": mt_road(),
-    "|": mt_road(True), "-": mt_tracks(), "R": mt_roof(), "W": mt_wall(), "D": mt_door(),
-    "S": mt_sign(), "E": mt_sign(), "K": mt_sign(), "X": mt_barrier(), "b": mt_bh_roof(),
-    "H": mt_bh_wall(), "O": mt_bh_door(),
-}
-BIG = {"P": pyramid_img(), "F": facade_img()}
-
+ow = owbuild.build(lambda ch: render(FONT[ch], 1, 1, 0, 1, 8, 8, lambda y: 3))
+OW_W, OW_H = ow["W"], ow["H"]
 ow_tiles = [0, []]
 ow_idx = {}
-ow_map = [0] * 1024
-ow_attr = [0] * 1024
-ow_coll = [0] * 256
-npcs = []
-start = None
-origin = {}
-for y, row in enumerate(OW_MAP):
-    assert len(row) == 16, row
-    for x, ch in enumerate(row):
-        if ch in BIG and ch not in origin:
-            origin[ch] = (x, y)
-for y, row in enumerate(OW_MAP):
-    for x, ch in enumerate(row):
-        ground = ch
-        if ch in NPC_TYPES:
-            npcs.append((x, y, NPC_TYPES[ch]))
-            ground = NPC_GROUND.get(ch, ":")
-        elif ch == "@":
-            start = (x, y)
-            ground = ":"
-        if ground in BIG:
-            ox, oy = origin[ground]
-            src = BIG[ground]
-            img = [r[(x - ox) * 16:(x - ox) * 16 + 16] for r in src[(y - oy) * 16:(y - oy) * 16 + 16]]
-        else:
-            img = METATILES[ground]
-        for i, t in enumerate(cut(img)):
-            pos = (y * 2 + i // 2) * 32 + x * 2 + i % 2
-            ow_map[pos] = tileset_add(ow_tiles, ow_idx, t)
-            ow_attr[pos] = 0x08 | OW_PAL[ground]
-        coll = 0x80 if ground in SOLID else 0
-        coll |= EVENTS.get(ground, 0)
-        if ch in NPC_TYPES:
-            coll = 0x80 | (16 + len(npcs) - 1)
-        ow_coll[y * 16 + x] = coll
-assert len(ow_tiles[1]) <= 256, len(ow_tiles[1])
-assert start
+ow_mt_tiles = [[0] * 256 for _ in range(4)]
+ow_mt_attrs = [[0] * 256 for _ in range(4)]
+ow_coll = [0x80] * 256
+for mid, (img, pals, coll) in enumerate(ow["metas"]):
+    for q, t in enumerate(cut(img)):
+        ow_mt_tiles[q][mid] = tileset_add(ow_tiles, ow_idx, t)
+        ow_mt_attrs[q][mid] = 0x08 | pals[q]
+    ow_coll[mid] = coll
+assert len(ow["metas"]) <= 256 and len(ow_tiles[1]) <= 256, (len(ow["metas"]), len(ow_tiles[1]))
+ow_map = [ow["map"][y][x] for y in range(OW_H) for x in range(OW_W)]
+
+# street-name zones on a 2x2-block grid (majority of the named street cells)
+ZW, ZH = (OW_W + 1) // 2, (OW_H + 1) // 2
+zones = []
+for zy in range(ZH):
+    for zx in range(ZW):
+        cnt = {}
+        for y in range(zy * 2, min(zy * 2 + 2, OW_H)):
+            for x in range(zx * 2, min(zx * 2 + 2, OW_W)):
+                n = ow["names"][y][x]
+                if n:
+                    cnt[n] = cnt.get(n, 0) + 1
+        zones.append(max(cnt, key=cnt.get) if cnt else 0)
+used_names = sorted(set(zones) - {0})
+name_remap = {n: i + 1 for i, n in enumerate(used_names)}
+zones = [name_remap.get(z, 0) for z in zones]
+street_names = [ow["name_list"][n] for n in used_names]
+assert len(street_names) < 255
+
+defs += [("OW_W", OW_W), ("OW_H", OW_H), ("OW_ZW", ZW), ("OW_BORDER", ow["border"]),
+         ("OW_START_X", ow["start"][0]), ("OW_START_Y", ow["start"][1]),
+         ("OW_GOAL_X", ow["goal"][0]), ("OW_GOAL_Y", ow["goal"][1])]
+print(f"overworld {OW_W}x{OW_H}, {len(ow['metas'])} metatiles, {len(ow_tiles[1])} tiles, "
+      f"{len(street_names)} street names, route {ow['route_len']} blocks")
+
+
+# --------------------------------------------------------------------------
+# Ending illustration
+# --------------------------------------------------------------------------
+import ending  # noqa: E402
+
+end_tiles, end_map, end_attr = ending.build(
+    lambda ch: render(FONT[ch], 1, 1, 0, 1, 8, 8, lambda y: 3),
+    lambda ch: render(FONT[ch], 2, 2, 0, 2, 16, 16, lambda y: 3 if y < 8 else 2))
+assert len(end_tiles) <= 256, len(end_tiles)
 
 with open(os.path.join(OUT, "tiles0.2bpp"), "wb") as f:
     f.write(b"".join(tile_bytes(t) for t in bank0))
 for name, tiles in [("logo", scene_logo[1]), ("deck", scene_deck[1]), ("owspr", scene_ow[1]),
-                    ("bigfont", bigfont), ("owtiles", ow_tiles[1])]:
+                    ("bigfont", bigfont), ("owtiles", ow_tiles[1]), ("endtiles", end_tiles)]:
     with open(os.path.join(OUT, f"{name}.2bpp"), "wb") as f:
         f.write(b"".join(tile_bytes(t) for t in tiles))
 
-defs += [("OW_START_X", start[0]), ("OW_START_Y", start[1]), ("OW_NUM_NPCS", len(npcs)),
-         ("CH_0", charmap_small["0"]), ("CH_COLON", charmap_small[":"]), ("CH_NEXT", charmap_small["<NEXT>"]), ("CH_HEART", charmap_small["<3"])]
+defs += [("CH_0", charmap_small["0"]), ("CH_COLON", charmap_small[":"]), ("CH_NEXT", charmap_small["<NEXT>"]), ("CH_HEART", charmap_small["<3"])]
 
 
 def charmap_lines(name, cmap):
@@ -729,28 +479,11 @@ OBJ = [
     [0, rgb(12, 0, 2), rgb(31, 4, 6), rgb(31, 18, 20)],   # 7 bar red
 ]
 
-OW_BG = [
-    [WHITE, rgb(21, 21, 24), rgb(12, 12, 16), rgb(3, 3, 10)],          # 0 text box
-    [rgb(18, 27, 10), rgb(10, 21, 6), rgb(4, 13, 4), rgb(1, 5, 2)],    # 1 grass, trees
-    [rgb(24, 23, 21), rgb(17, 16, 15), rgb(9, 9, 10), rgb(31, 31, 28)],  # 2 cobble, road, tracks
-    [rgb(29, 26, 20), rgb(27, 9, 7), rgb(14, 5, 4), rgb(4, 6, 10)],    # 3 houses
-    [rgb(24, 23, 21), rgb(24, 11, 8), rgb(16, 6, 4), rgb(7, 3, 2)],    # 4 pyramid (red sandstone)
-    [rgb(5, 3, 10), rgb(14, 5, 20), rgb(31, 8, 24), WHITE],            # 5 Ballhaus West (neon)
-    [rgb(24, 23, 21), rgb(29, 6, 4), WHITE, rgb(17, 16, 15)],          # 6 signs, barrier
-    [rgb(18, 27, 10), rgb(29, 8, 8), rgb(31, 26, 6), rgb(10, 6, 3)],   # 7 flowers
-]
-SKIN = rgb(31, 24, 18)
-INK = rgb(2, 2, 4)
+OW_BG = owbuild.A.OW_BG
 OW_OBJ = [
-    [0, INK, rgb(28, 6, 6), SKIN],                       # 0 player
-    [0, rgb(15, 15, 17), rgb(18, 8, 22), SKIN],          # 1 oma
-    [0, INK, rgb(4, 20, 8), SKIN],                       # 2 doener guy
-    [0, INK, rgb(31, 16, 0), SKIN],                      # 3 worker
-    [0, INK, rgb(7, 7, 9), SKIN],                        # 4 bouncer
-    [0, rgb(8, 6, 4), rgb(24, 21, 16), WHITE],           # 5 goat
-    [0, rgb(4, 4, 6), rgb(28, 5, 5), rgb(24, 28, 31)],   # 6 tram
-    [0, INK, rgb(28, 6, 6), SKIN],
-]
+    [0, rgb(2, 2, 4), rgb(28, 5, 6), rgb(31, 31, 31)],     # 0 player (GBC style: white skin)
+    [0, rgb(8, 4, 0), rgb(31, 18, 0), rgb(31, 31, 8)],     # 1 goal arrow
+] + [[0, 0, 0, 0]] * 6
 
 
 def hsv(h, s, v):
@@ -846,29 +579,55 @@ for i, c in enumerate(PROG):  # breakdown: no kick, lead melody, snare roll
 
 WAVE = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98, 0xFF, 0xFF, 0x00, 0x00]
 
+def dstr(text):
+    return "    db " + ", ".join(f'"{c}"' if c != '"' else "34" for c in text) + ", $FF"
+
+
 with open(os.path.join(OUT, "data.inc"), "w") as f:
     w = f.write
     w("; generated by tools/gen.py\n\n")
-    w('SECTION "Tile sets", ROMX\n')
-    for label, name in [("LogoTiles", "logo"), ("DeckTiles", "deck"), ("OwSprTiles", "owspr"),
-                        ("BigFontTiles", "bigfont"), ("OwTiles", "owtiles")]:
-        w(f'{label}:\n    INCBIN "{name}.2bpp"\n{label}End:\n')
-    w("\nLogoMap:\n" + db(logo_map) + "\n")
+    # bank 1 stays mapped while playing: map, lookup tables, palettes
+    w('SECTION "Overworld metatiles", ROMX, BANK[1], ALIGN[8]\nOwMtTiles:\n')
+    for q in range(4):
+        w(db(ow_mt_tiles[q]) + "\n")
+    w("OwMtAttrs:\n")
+    for q in range(4):
+        w(db(ow_mt_attrs[q]) + "\n")
+    w("OwColl:\n" + db(ow_coll) + "\n\n")
+    w('SECTION "Overworld map", ROMX, BANK[1]\n')
+    w("OwRowPtr:\n" + "\n".join(f"    dw OwMapData + {y * OW_W}" for y in range(OW_H)) + "\n")
+    w("OwZoneRowPtr:\n" + "\n".join(f"    dw OwZones + {y * ZW}" for y in range(ZH)) + "\n")
+    w("OwMapData:\n" + db(ow_map, 32) + "\n")
+    w("OwZones:\n" + db(zones, 32) + "\n")
+    w("OwStreetNames:\n    dw 0\n" + "".join(f"    dw StreetName{i + 1}\n" for i in range(len(street_names))))
+    for i, n in enumerate(street_names):
+        w(f"StreetName{i + 1}:\n{dstr(n)}\n")
+    w("\n")
+    w('SECTION "Small maps and palettes", ROMX, BANK[1]\n')
+    w("LogoMap:\n" + db(logo_map) + "\n")
     w("DeckMap:\n" + db(deck_map, 9) + "\n")
-    w("OwMap:\n" + db(ow_map, 32) + "\n")
-    w("OwAttr:\n" + db(ow_attr, 32) + "\n")
-    w("OwNpcs:\n" + "\n".join(f"    db {x * 16}, {y * 16}, {t}" for x, y, t in npcs) + "\n\n")
-    w('SECTION "OwColl", ROMX, ALIGN[8]\nOwColl:\n' + db(ow_coll) + "\n\n")
-    w('SECTION "Palettes", ROMX\nDefaultPalettes:\n' + dw([c for p in BG + OBJ for c in p]) + "\n")
+    w("DefaultPalettes:\n" + dw([c for p in BG + OBJ for c in p]) + "\n")
     w("OwPalettes:\n" + dw([c for p in OW_BG + OW_OBJ for c in p]) + "\n")
+    w("EndPalettes:\n" + dw([c for p in ending.END_BG + OBJ for c in p]) + "\n")
     DECK = [NAVY, rgb(18, 18, 22), rgb(2, 2, 5)]
     w("DeckPalettes:\n" + dw(DECK + [rgb(31, 10, 24)] + DECK + [rgb(8, 28, 31)]) + "\n")
     w("RainbowHi:\n" + dw(RAINBOW_HI) + "\n")
     w("RainbowLo:\n" + dw(RAINBOW_LO) + "\n")
     w("FlashTab:\n" + dw(FLASH) + "\n\n")
+    # bank 2: tile sets, only read while the screen is off
+    w('SECTION "Tile sets", ROMX, BANK[2]\n')
+    for label, name in [("LogoTiles", "logo"), ("DeckTiles", "deck"), ("OwSprTiles", "owspr"),
+                        ("BigFontTiles", "bigfont"), ("OwTiles", "owtiles")]:
+        w(f'{label}:\n    INCBIN "{name}.2bpp"\n{label}End:\n')
+    w("\n")
+    w('SECTION "Ending", ROMX, BANK[3]\n')
+    w('EndTiles:\n    INCBIN "endtiles.2bpp"\nEndTilesEnd:\n')
+    w("EndMap:\n" + db(end_map, 20) + "\n")
+    w("EndAttr:\n" + db(end_attr, 20) + "\n\n")
+    # ROM0: tables and the song (read from interrupts)
     w('SECTION "SineTab", ROM0, ALIGN[8]\nSineTab:\n' + db(SINE) + "\n\n")
     w('SECTION "FadeTab", ROM0, ALIGN[8]\nFadeTab:\n' + db([c for row in FADE for c in row]) + "\n\n")
-    w('SECTION "Song", ROMX\n')
+    w('SECTION "Song", ROM0\n')
     w("SqFreq:\n" + dw(SQ_FREQ) + "\n")
     w("WaveFreq:\n" + dw(WAVE_FREQ) + "\n")
     w("ChordTab:\n    db 0, 0, 0, 0\n")
@@ -876,12 +635,12 @@ with open(os.path.join(OUT, "data.inc"), "w") as f:
         w("    db " + ", ".join(str(nidx(n)) for n in CHORDS[cid][0]) + "\n")
     w("WaveData:\n" + db(WAVE) + "\n")
     w("SongStart:\n")
-    for s in song_intro:
-        w("    db " + ", ".join(str(v) for v in s) + "\n")
+    for st in song_intro:
+        w("    db " + ", ".join(str(v) for v in st) + "\n")
     w("SongLoop:\n")
-    for s in song_loop:
-        w("    db " + ", ".join(str(v) for v in s) + "\n")
+    for st in song_loop:
+        w("    db " + ", ".join(str(v) for v in st) + "\n")
     w("SongEnd:\n")
 
 print(f"fixed bank0: {SCENE_BASE}, logo: {len(scene_logo[1])}, deck: {len(scene_deck[1])}, "
-      f"ow sprites: {len(scene_ow[1])}, bigfont: {len(bigfont)}, ow tiles: {len(ow_tiles[1])}, npcs: {len(npcs)}")
+      f"ow sprites: {len(scene_ow[1])}, bigfont: {len(bigfont)}, ending tiles: {len(end_tiles)}")
