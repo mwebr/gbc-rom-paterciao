@@ -632,6 +632,11 @@ LoadDeck:
     ld hl, DeckTiles
     ld bc, DeckTilesEnd - DeckTiles
     jr LoadScene
+LoadEndFont:
+    ld a, 4
+    ld hl, EndFontTiles
+    ld bc, EndFontTilesEnd - EndFontTiles
+    jr LoadScene
 LoadOwSprites:
     ld a, 3
     ld hl, OwSprTiles
@@ -1409,12 +1414,10 @@ TitleInit:
     ld de, _SCRN0 + TITLE_MARQ_ROW * 32
     ld bc, (32 << 8) | 2
     call SetAttrRect
-    ld a, 255
-    ld [wMarqScx], a
-    ld a, LOW(MarqText)
-    ld [wMarqPtr], a
-    ld a, HIGH(MarqText)
-    ld [wMarqPtr + 1], a
+    ld hl, MarqText
+    ld de, _SCRN0 + TITLE_MARQ_ROW * 32
+    ld a, TITLE_MARQ_ROW * 8
+    call MarqueeInit
 
     ld bc, (24 << 8) | 127
     ld de, ((TITLE_LOGO_ROW * 8 - 4) << 8) | 31
@@ -1441,26 +1444,58 @@ TitleUpdate:
     ld hl, wScxTable + TITLE_LOGO_ROW * 8
     call LogoWave
 
-    ; marquee
+    call MarqueeStep
+    ld a, [wFrame]
+    srl a
+    srl a
+    ld e, a
+    ld a, 1
+    call RainbowPal
+    jp UpdateSparkles
+
+; big-font text scrolling through a 2-row band
+; hl = text (glyph base tiles, $FF end), de = map row address, a = first scanline
+MarqueeInit:
+    ld [wMarqLine], a
+    ld a, l
+    ld [wMarqStart], a
+    ld [wMarqPtr], a
+    ld a, h
+    ld [wMarqStart + 1], a
+    ld [wMarqPtr + 1], a
+    ld a, e
+    ld [wMarqMap], a
+    ld a, d
+    ld [wMarqMap + 1], a
+    ld a, 255
+    ld [wMarqScx], a
+    ret
+
+MarqueeStep:
     ld a, [wMarqScx]
     inc a
     ld [wMarqScx], a
-    ld hl, wScxTable + TITLE_MARQ_ROW * 8
+    ld hl, wScxTable
+    ld a, [wMarqLine]
+    ld l, a
+    ld a, [wMarqScx]
     ld b, 16
     call FillBytes
     ld a, [wMarqScx]
     and 15
-    jr nz, .noMarq
+    ret nz
     ld a, [wMarqScx]
     rrca
     rrca
     rrca
     add a, 20
     and 31
-    ld hl, _SCRN0 + TITLE_MARQ_ROW * 32
-    ADD_HL_A
-    ld d, h
-    ld e, l
+    ld hl, wMarqMap
+    ld e, [hl]
+    inc hl
+    ld d, [hl]
+    add a, e
+    ld e, a                 ; row base is 32-aligned
     ld hl, wMarqPtr
     ld a, [hl+]
     ld h, [hl]
@@ -1468,7 +1503,10 @@ TitleUpdate:
     ld a, [hl+]
     cp $FF
     jr nz, .gotChar
-    ld hl, MarqText
+    ld a, [wMarqStart]
+    ld l, a
+    ld a, [wMarqStart + 1]
+    ld h, a
     ld a, [hl+]
 .gotChar:
     ld b, a
@@ -1477,15 +1515,7 @@ TitleUpdate:
     ld a, h
     ld [wMarqPtr + 1], a
     ld a, b
-    call QueueBig
-.noMarq:
-    ld a, [wFrame]
-    srl a
-    srl a
-    ld e, a
-    ld a, 1
-    call RainbowPal
-    jp UpdateSparkles
+    jp QueueBig
 
 ; hl -> first SCX table entry of the 32 logo lines: gentle wave
 LogoWave:
@@ -3299,8 +3329,7 @@ MapSprites:
     ld a, [wHitCool]        ; blink after a tram bump
     and 4
     jr z, .visible
-    ld d, 0
-    ld e, 0
+    ld d, SPR_NONE
 .visible:
     ld a, [wCamX]
     ld c, a
@@ -4276,44 +4305,15 @@ EndInit:
     call MemCopy
 
     DRAW StrDateTime, 14, 0, 7, 20
-    DRAW StrDJs, 15, 1, 6, 18
-    DRAW StrYourTime, 16, 2
-    DRAW StrSeeYou, 17, 3, 6, 14
-
-    ; play time m:ss (capped at 9:59)
-    ld hl, wPlayTime
-    ld a, [hl+]
-    ld h, [hl]
-    ld l, a
-    ld c, 60
-    call DivHL              ; de = seconds
-    ld a, d
-    cp HIGH(600)
-    jr c, .noCap
-    jr nz, .cap
-    ld a, e
-    cp LOW(600)
-    jr c, .noCap
-.cap:
-    ld de, 599
-.noCap:
-    ld h, d
-    ld l, e
-    ld c, 60
-    call DivHL              ; e = minutes, a = seconds
-    ld b, a
-    ld hl, wBuf
-    ld a, e
-    add a, CH_0
-    ld [hl+], a
-    ld a, CH_COLON
-    ld [hl+], a
-    ld a, b
-    call TwoDigits
-    ld [hl], $FF
-    ld hl, wBuf
-    ld de, _SCRN0 + 16 * 32 + 13
-    call DrawText
+    call LoadEndFont
+    ld a, 7                 ; yellow, glyphs in VRAM bank 0
+    ld de, _SCRN0 + 15 * 32
+    ld bc, (32 << 8) | 2
+    call SetAttrRect
+    ld hl, EndMarqText
+    ld de, _SCRN0 + 15 * 32
+    ld a, 15 * 8
+    call MarqueeInit
 
     ld hl, wConfetti
     ld c, NUM_CONFETTI
@@ -4348,6 +4348,7 @@ EndUpdate:
     ld a, SCR_TITLE
     jp RequestScreen
 .stay:
+    call MarqueeStep
     ld a, [wFrame]
     ld e, a
     ld a, 1
@@ -4403,7 +4404,7 @@ EndUpdate:
     ld a, [hl]
     inc a
     ld [hl+], a
-    cp 136
+    cp 112                  ; stop above the text
     jr c, .onScreen
     xor a
     dec hl
@@ -4487,6 +4488,9 @@ wSceneSet:   db
 wBuf:        ds 8
 wMarqScx:    db
 wMarqPtr:    dw
+wMarqStart:  dw
+wMarqMap:    dw
+wMarqLine:   db
 wSparkX0:    db
 wSparkXMask: db
 wSparkY0:    db

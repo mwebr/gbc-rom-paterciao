@@ -198,6 +198,8 @@ SPRITES = {
     "SPR_DOT": ["........", "........", "..333...", "..333...", "..333...", "........", "........", "........"] + EMPTY8,
     "SPR_CORNER": ["3333....", "3111....", "31......", "31......", "........", "........", "........", "........"] + EMPTY8,
     "SPR_HEART": ["........", ".22.22..", "2322222.", "2222222.", ".22222..", "..222...", "...2....", "........"] + EMPTY8,
+    "SPR_NONE": EMPTY8 + EMPTY8,
+    "SPR_NONE2": EMPTY8 + EMPTY8,
     "SPR_CONFETTI": ["........", "........", "..332...", "..322...", "........", "........", "........", "........"] + EMPTY8,
 }
 for name, rows in SPRITES.items():
@@ -475,6 +477,18 @@ assert len(crate_tiles) <= 256, len(crate_tiles)
 # --------------------------------------------------------------------------
 # Ballhaus West interior
 # --------------------------------------------------------------------------
+# ending marquee: the 2x glyphs it needs, as a bank-0 scene (bank 1 holds the picture)
+END_MARQ = "SIMA + PATER JO~O" + " " * 12
+scene_endfont, idx = new_scene()
+end_glyph_base = {}
+for ch in dict.fromkeys(END_MARQ):
+    end_glyph_base[ch] = scene_endfont[0] + len(scene_endfont[1])
+    if ch == " ":
+        scene_endfont[1] += [blank(8, 8)] * 4
+    else:
+        scene_endfont[1] += cut(render(FONT[ch], 2, 2, 0, 2, 16, 16, lambda y: 3 if y < 8 else 2))
+assert SCENE_BASE + len(scene_endfont[1]) <= 256
+
 club_mts = art2.club_metatiles(lambda ch: render(FONT[ch], 1, 1, 0, 1, 8, 8, lambda y: 3))
 club_tiles = []
 club_idx = {}
@@ -511,7 +525,8 @@ with open(os.path.join(OUT, "tiles0.2bpp"), "wb") as f:
     f.write(b"".join(tile_bytes(t) for t in bank0))
 for name, tiles in [("logo", scene_logo[1]), ("deck", scene_deck[1]), ("owspr", scene_ow[1]),
                     ("bigfont", bigfont), ("owtiles", ow_tiles[1]), ("endtiles", end_tiles),
-                    ("avatars", avatar_tiles), ("crates", crate_tiles), ("club", club_tiles)]:
+                    ("avatars", avatar_tiles), ("crates", crate_tiles), ("club", club_tiles),
+                    ("endfont", scene_endfont[1])]:
     with open(os.path.join(OUT, f"{name}.2bpp"), "wb") as f:
         f.write(b"".join(tile_bytes(t) for t in tiles))
 
@@ -708,6 +723,7 @@ with open(os.path.join(OUT, "data.inc"), "w") as f:
     w("SleevePalettes:\n" + dw([c for _, _, p in art2.SLEEVES for c in p]) + "\n")
     w("SleeveLabels:\n" + "".join(dstr(l.center(6)) + "\n" for _, l, _ in art2.SLEEVES))
     w("DjNamesPadded:\n" + "".join(dstr(n.center(18)) + "\n" for _, n, *_ in art2.AVATARS))
+    w("EndMarqText:\n    db " + ", ".join(str(end_glyph_base[c]) for c in END_MARQ) + ", $FF\n")
     w("ClubPalettes:\n" + dw([c for p in art2.CLUB_BG + CLUB_OBJ for c in p]) + "\n")
     w("ClubColl:\n" + db(club_coll, 10) + "\n")
     routes = ow["tram_routes"]
@@ -724,7 +740,7 @@ with open(os.path.join(OUT, "data.inc"), "w") as f:
     w("FlashTab:\n" + dw(FLASH) + "\n\n")
     # bank 2: tile sets, only read while the screen is off
     w('SECTION "Tile sets", ROMX, BANK[2]\n')
-    for label, name in [("LogoTiles", "logo"), ("DeckTiles", "deck"), ("OwSprTiles", "owspr"),
+    for label, name in [("LogoTiles", "logo"), ("DeckTiles", "deck"), ("OwSprTiles", "owspr"), ("EndFontTiles", "endfont"),
                         ("BigFontTiles", "bigfont"), ("OwTiles", "owtiles")]:
         w(f'{label}:\n    INCBIN "{name}.2bpp"\n{label}End:\n')
     w("\n")

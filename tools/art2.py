@@ -130,7 +130,7 @@ def train_car(front):
 # --------------------------------------------------------------------------
 CLUB_TEXT, CLUB_WALL, CLUB_WOOD, CLUB_DANCE, CLUB_BAR, CLUB_DECKS, CLUB_SPEAKER, CLUB_NEON = range(8)
 CLUB_BG = [
-    [rgb(31, 31, 31), rgb(21, 21, 24), rgb(12, 12, 16), rgb(3, 3, 8)],
+    [rgb(31, 31, 31), rgb(26, 26, 28), rgb(12, 12, 16), rgb(3, 3, 8)],
     [rgb(7, 3, 13), rgb(12, 5, 19), rgb(31, 8, 24), rgb(1, 0, 3)],       # walls
     [rgb(22, 13, 7), rgb(16, 9, 5), rgb(9, 5, 3), rgb(2, 1, 1)],         # wooden floor
     [rgb(31, 8, 24), rgb(8, 28, 31), rgb(31, 28, 6), rgb(14, 6, 31)],    # dance floor (cycled)

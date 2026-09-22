@@ -30,10 +30,8 @@ LoadMsgs:
     db "CHILLING DRINKS.", $FF
     db "READY. LET'S GO!", $FF
 
-StrDJs:         db "SIMA, PATER, JO~O", $FF
+StrDJs:         db "SIMA + PATER JO~O", $FF
 StrStart:       db "START: 18:00", $FF
-StrYourTime:    db "YOUR TIME: ", $FF
-StrSeeYou:      db "SEE YOU THERE!", $FF
 
 ; --- text box ---------------------------------------------------------------
 DjTexts:
@@ -45,7 +43,7 @@ TxtTiesto:      db "TIESTO?", NL, "STUCK AT THE", NL, "AIRPORT. NEXT!", EOT
 TxtJoao:        db "JO~O IS IN!", NL, "SUNSHINE ON", NL, "THE DECKS!", EOT
 TxtCalvin:      db "CALVIN HARRIS?", NL, "ON A SUMMER TOUR.", NL, "MAYBE NEXT YEAR!", EOT
 TxtAlready:     db "ALREADY BOOKED!", NL, "PICK SOMEONE ELSE.", EOT
-TxtLineupDone:  db "LINE UP COMPLETE!", NL, "SIMA, PATER, JO~O", NL, "WHAT A NIGHT!", EOT
+TxtLineupDone:  db "LINE UP COMPLETE!", NL, "SIMA + PATER JO~O", NL, "WHAT A NIGHT!", EOT
 
 TxtCratesIntro: db "DIG THE CRATES!", NL, "PRESS A TO STOP", NL, "EACH CRATE.", EOT
 TxtJackpot:     db "JACKPOT!", NL, "3X HOUSE CLASSICS", NL, "IN THE BAG!", EOT

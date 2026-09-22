@@ -11,7 +11,7 @@ def rgb(r, g, b):
 # BG palettes (index: purpose)
 PAL_TEXT, PAL_GREEN, PAL_STONE, PAL_ROOF_RED, PAL_ROOF_GREY, PAL_WALL, PAL_WATER, PAL_NEON = range(8)
 OW_BG = [
-    [rgb(31, 31, 31), rgb(21, 21, 24), rgb(12, 12, 16), rgb(3, 3, 8)],       # text box
+    [rgb(31, 31, 31), rgb(26, 26, 28), rgb(12, 12, 16), rgb(3, 3, 8)],       # text box
     [rgb(24, 30, 17), rgb(13, 24, 9), rgb(5, 15, 6), rgb(2, 6, 3)],          # grass / trees
     [rgb(28, 27, 24), rgb(20, 20, 20), rgb(13, 13, 15), rgb(4, 4, 7)],       # pavement / road / rails
     [rgb(30, 28, 22), rgb(29, 12, 8), rgb(18, 5, 4), rgb(5, 3, 5)],          # red roofs
