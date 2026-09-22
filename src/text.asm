@@ -8,6 +8,7 @@ StrNeedCGB1:    db "GAME BOY COLOR", $FF
 StrNeedCGB2:    db "NEEDED!", $FF
 StrVenue:       db "@ BALLHAUS WEST", $FF
 StrDateTime:    db "THU 29.10.2026 18:00", $FF
+StrDateEnd:     db "29.10.2026 18:00", $FF
 StrPressStart:  db "PRESS START", $FF
 StrLineupTBA:   db "LINE UP: ???", $FF
 

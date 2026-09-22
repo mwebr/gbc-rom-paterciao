@@ -4278,14 +4278,14 @@ EndInit:
     ld a, BANK(EndMap)
     ld hl, EndMap
     ld de, _SCRN0
-    ld bc, (20 << 8) | 14
+    ld bc, (20 << 8) | 13
     call CopyRectBank
     ld a, 1
     ldh [rVBK], a
     ld a, BANK(EndAttr)
     ld hl, EndAttr
     ld de, _SCRN0
-    ld bc, (20 << 8) | 14
+    ld bc, (20 << 8) | 13
     call CopyRectBank
     xor a
     ldh [rVBK], a
@@ -4304,7 +4304,7 @@ EndInit:
     ld bc, 128
     call MemCopy
 
-    DRAW StrDateTime, 14, 0, 7, 20
+    DRAW StrDateEnd, 14, 2, 7, 16
     call LoadEndFont
     ld a, 7                 ; yellow, glyphs in VRAM bank 0
     ld de, _SCRN0 + 15 * 32
@@ -4404,7 +4404,7 @@ EndUpdate:
     ld a, [hl]
     inc a
     ld [hl+], a
-    cp 112                  ; stop above the text
+    cp 104                  ; stop above the text
     jr c, .onScreen
     xor a
     dec hl

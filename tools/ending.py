@@ -63,10 +63,10 @@ def build(font_glyph, big_glyph):
     beam(56, 50, 36, 6)
     beam(104, 50, 124, 6)
     # moon
-    for y in range(4, 20):
+    for y in range(12, 28):
         for x in range(128, 146):
-            d = math.hypot(x - 137, y - 12)
-            d2 = math.hypot(x - 141, y - 9)
+            d = math.hypot(x - 137, y - 20)
+            d2 = math.hypot(x - 141, y - 17)
             if d <= 7 and d2 > 6:
                 px[y][x] = 3
     for _ in range(60):
@@ -165,9 +165,28 @@ def build(font_glyph, big_glyph):
                 px[top][xx] = 3
         x += rnd.randrange(7, 11)
 
+    # tighten: drop the top sky row so the scene ends one tile row higher,
+    # then put ENKA back at rows 1-2 (frees a padding row above the text)
+    px = px[8:]
+    tpal = tpal[1:]
+    for y in range(24):
+        for x in range(48, 112):
+            px[y][x] = 0
+    for c in range(6, 14):
+        tpal[0][c] = PAL_SKY
+        tpal[1][c] = tpal[2][c] = PAL_LOGO
+    for x, y in ((52, 3), (71, 1), (90, 5), (104, 2)):
+        px[y][x] = 3
+    for i, ch in enumerate("ENKA"):
+        g = big_glyph(ch)
+        for y in range(16):
+            for x in range(16):
+                if g[y][x]:
+                    px[8 + y][48 + i * 16 + x] = g[y][x]
+
     tiles, idx = [], {}
     tmap, amap = [], []
-    for r in range(H // 8):
+    for r in range(len(px) // 8):
         for c in range(W // 8):
             t = tuple(tuple(px[r * 8 + y][c * 8:c * 8 + 8]) for y in range(8))
             if t not in idx:
@@ -180,7 +199,8 @@ def build(font_glyph, big_glyph):
 
 def preview(tiles, tmap, amap, path):
     from PIL import Image
-    img = Image.new("RGB", (W, H))
+    h = len(tmap) // (W // 8) * 8
+    img = Image.new("RGB", (W, h))
     for i, (t, a) in enumerate(zip(tmap, amap)):
         pal = END_BG[a & 7]
         r, c = divmod(i, W // 8)
@@ -188,4 +208,4 @@ def preview(tiles, tmap, amap, path):
             for x in range(8):
                 v = pal[tiles[t][y][x]]
                 img.putpixel((c * 8 + x, r * 8 + y), ((v & 31) * 8, ((v >> 5) & 31) * 8, ((v >> 10) & 31) * 8))
-    img.resize((W * 3, H * 3), 0).save(path)
+    img.resize((W * 3, h * 3), 0).save(path)
