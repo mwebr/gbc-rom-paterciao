@@ -418,6 +418,17 @@ def build():
     goal = nearest(to_cell(*BALLHAUS), lambda x, y: kind[y][x] == BUILDING and bid_grid[y][x] != hbf_id and any(
         kind[yy][xx] in (ROAD, TRAM, PLAZA, PAVE) for xx, yy in neighbours(x, y)))
     gx, gy = goal
+    # the club is on the other side of Hirschstrasse: mirror across the street, same row
+    hid = names.index("HIRSCHSTRASSE")
+    road = lambda x: kind[gy][x] in (ROAD, TRAM, PLAZA)
+    hx = min((x for x in range(W) if name_grid[gy][x] == hid), key=lambda x: abs(x - gx))
+    step = -1 if gx > hx else 1
+    x = hx
+    while 0 <= x < W and road(x):
+        x += step
+    if 0 <= x < W and kind[gy][x] == BUILDING:
+        goal = (x, gy)
+        gx = x
     for x, y in [(gx, gy)] + neighbours(gx, gy):
         if kind[y][x] == BUILDING:
             bid_grid[y][x] = ballhaus_id

@@ -13,6 +13,9 @@ DEF WIN_MAP    EQU $9C00
 DEF WIN_Y      EQU 96          ; text box = bottom 6 tile rows
 DEF QUEUE_MAX  EQU 24
 DEF KICK_FREQ  EQU $700
+DEF LAYER_DRUMS EQU %001
+DEF LAYER_BASS  EQU %010
+DEF LAYER_KEYS  EQU %100        ; piano stabs + lead
 
 DEF SCR_TITLE   EQU 0
 DEF SCR_DJS     EQU 1
@@ -203,6 +206,9 @@ MainLoop:
     ld a, [wScreen]
     ld hl, UpdateTable
     call CallTable
+    ld a, [wWindowOn]
+    and a
+    call nz, HideUnderWindow
     call ApplyFade
     ld a, [wChangeReq]
     and a
@@ -439,6 +445,27 @@ ReadJoy:
     ld a, b
     ldh [hJoyHeld], a
     ldh [hPadHeld], a
+    ret
+
+; text boxes / pop-ups stay on top: hide every sprite that reaches into the window
+HideUnderWindow:
+    ld a, [wWinY]
+    ld b, a
+    ld hl, wShadowOAM
+    ld c, 40
+.loop:
+    ld a, [hl]
+    cp b
+    jr c, .keep
+    jr z, .keep
+    xor a
+    ld [hl], a
+.keep:
+    ld a, l
+    add a, 4
+    ld l, a
+    dec c
+    jr nz, .loop
     ret
 
 ; ignore the pad for the rest of this frame (used while a text box is open).
@@ -1364,6 +1391,8 @@ DEF TITLE_LOGO_ROW EQU 4
 DEF TITLE_MARQ_ROW EQU 11
 
 TitleInit:
+    ld a, LAYER_DRUMS
+    ld [wMusicLayers], a
     call LoadBigFont
     call LoadLogo
     ld hl, LogoMap
@@ -1404,6 +1433,8 @@ TitleUpdate:
     ld [wDjMask], a
     inc a
     ld [wTimerOn], a
+    ld a, LAYER_DRUMS | LAYER_BASS
+    ld [wMusicLayers], a
     ld a, SCR_DJS
     jp RequestScreen
 .noInput:
@@ -3880,6 +3911,8 @@ DrawPart:
 ; Ballhaus West inside: walk to the decks
 ; ==========================================================================
 ClubInit:
+    ld a, LAYER_DRUMS | LAYER_BASS | LAYER_KEYS
+    ld [wMusicLayers], a
     call LoadClub
     call LoadOwSprites
     xor a
@@ -4213,7 +4246,6 @@ EndInit:
     xor a
     ld [wTimerOn], a
     call LoadEndTiles
-    call LoadLogo
     ld a, BANK(EndMap)
     ld hl, EndMap
     ld de, _SCRN0
@@ -4228,14 +4260,6 @@ EndInit:
     call CopyRectBank
     xor a
     ldh [rVBK], a
-    ld hl, LogoMap
-    ld de, _SCRN0 + 1 * 32 + 2
-    ld bc, (16 << 8) | 4
-    call CopyRect
-    ld a, 1
-    ld de, _SCRN0 + 1 * 32 + 2
-    ld bc, (16 << 8) | 4
-    call SetAttrRect
     ; clear the bottom border row
     ld hl, _SCRN0 + 17 * 32
     ld b, 32
@@ -4254,7 +4278,7 @@ EndInit:
     DRAW StrDateTime, 14, 0, 7, 20
     DRAW StrDJs, 15, 1, 6, 18
     DRAW StrYourTime, 16, 2
-    DRAW StrSeeYou, 17, 1, 6, 18
+    DRAW StrSeeYou, 17, 3, 6, 14
 
     ; play time m:ss (capped at 9:59)
     ld hl, wPlayTime
@@ -4304,8 +4328,8 @@ EndInit:
     dec c
     jr nz, .conf
 
-    ld bc, (16 << 8) | 127
-    ld de, (4 << 8) | 31
+    ld bc, (48 << 8) | 63
+    ld de, (4 << 8) | 15
     jp InitSparkles
 
 EndUpdate:
@@ -4324,23 +4348,6 @@ EndUpdate:
     ld a, SCR_TITLE
     jp RequestScreen
 .stay:
-    ld hl, wScxTable + 8    ; wavy logo like on the title
-    call LogoWave
-    ; bottom line alternates: see you there / map credit
-    ld a, [wFrame]
-    and $7F
-    jr nz, .noSwap
-    ld a, [wEndLine]
-    inc a
-    ld [wEndLine], a
-    and 1
-    ld hl, StrSeeYou
-    jr z, .line
-    ld hl, StrOsmCredit
-.line:
-    ld de, _SCRN0 + 17 * 32 + 1
-    call QueueText
-.noSwap:
     ld a, [wFrame]
     ld e, a
     ld a, 1
@@ -4536,7 +4543,7 @@ wObjX:       dw
 wObjY:       dw
 wClubGo:     db
 wScratchDone: db
-wEndLine:    db
+wMusicLayers: db
 wNoFlash:    db
 wTmp:        ds 4
 wReelIdx:    ds 3

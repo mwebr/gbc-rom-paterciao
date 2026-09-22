@@ -58,10 +58,10 @@ def build(font_glyph, big_glyph):
                     if not edge or (x + y) % 2 == 0:
                         px[y][x] = 2
 
-    beam(36, 58, 4, 10)
-    beam(124, 58, 156, 10)
-    beam(56, 58, 36, 6)
-    beam(104, 58, 124, 6)
+    beam(36, 50, 4, 10)
+    beam(124, 50, 156, 10)
+    beam(56, 50, 36, 6)
+    beam(104, 50, 124, 6)
     # moon
     for y in range(4, 20):
         for x in range(128, 146):
@@ -74,22 +74,28 @@ def build(font_glyph, big_glyph):
         if px[y][x] in (0, 1):
             px[y][x] = 3
 
-    # --- the animated ENKA logo goes here at runtime (rows 1-4, cols 2-17) ---------
-    region(2, 1, 18, 5, PAL_LOGO)
-    for y in range(8, 40):
-        for x in range(16, 144):
+    # --- ENKA in the 2x font, top centre (rows 1-2, cols 6-13) ---------------------
+    region(6, 1, 14, 3, PAL_LOGO)
+    for y in range(8, 24):
+        for x in range(48, 112):
             px[y][x] = 0
+    for i, ch in enumerate("ENKA"):
+        g = big_glyph(ch)
+        for y in range(16):
+            for x in range(16):
+                if g[y][x]:
+                    px[8 + y][48 + i * 16 + x] = g[y][x]
 
-    # --- the building (cols 3-16, rows 7-11) --------------------------------------
-    region(3, 7, 17, 12, PAL_BUILDING)
-    for y in range(56, 96):
+    # --- the building (cols 3-16, rows 6-11) --------------------------------------
+    region(3, 6, 17, 12, PAL_BUILDING)
+    for y in range(48, 96):
         for x in range(24, 136):
             c = 0
-            if y in (56, 57) or x in (24, 135):
+            if y in (48, 49) or x in (24, 135):
                 c = 3                               # roof line / outline
-            elif y == 58:
+            elif y == 50:
                 c = 1
-            elif (y - 60) % 6 == 5 and (x // 3) % 2 == 0:
+            elif (y - 52) % 6 == 5 and (x // 3) % 2 == 0:
                 c = 1                               # brick courses
             px[y][x] = c
     # lit windows (row 10)
@@ -102,12 +108,15 @@ def build(font_glyph, big_glyph):
         for y in range(82, 89):
             px[y][wx + 4] = 3
 
-    # neon sign (rows 8-9, cols 4-15)
-    region(4, 8, 16, 10, PAL_NEON)
-    for y in range(64, 80):
+    # neon sign (rows 7-9, cols 4-15): light strips above and below the letters
+    region(4, 7, 16, 10, PAL_NEON)
+    for y in range(56, 80):
         for x in range(32, 128):
             px[y][x] = 0
-    for text, y0 in (("BALLHAUS", 64), ("WEST", 72)):
+    for x in range(34, 126):
+        if x % 2 == 0:
+            px[57][x] = px[78][x] = 3
+    for text, y0 in (("BALLHAUS", 60), ("WEST", 69)):
         x0 = 80 - len(text) * 4
         for i, ch in enumerate(text):
             g = font_glyph(ch)
@@ -117,11 +126,8 @@ def build(font_glyph, big_glyph):
                     if g[y][x] == 3:
                         px[Y][X] = 2
                         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                            if px[Y + dy][X + dx] == 0 and 64 <= Y + dy < 80:
+                            if px[Y + dy][X + dx] == 0 and 59 <= Y + dy <= 77:
                                 px[Y + dy][X + dx] = 1
-    for x in range(34, 126):                        # neon tube frame
-        if x % 2 == 0:
-            px[65][x] = px[78][x] = 3
     # door glow (row 10-11 centre, part of the building region)
     for y in range(82, 96):
         for x in range(68, 92):

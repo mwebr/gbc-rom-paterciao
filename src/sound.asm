@@ -103,6 +103,9 @@ PlayStep:
 .drumsDone:
 
     ; bass (CH3)
+    ld a, [wMusicLayers]
+    and LAYER_BASS
+    jr z, .noBass
     ld a, [wStepBass]
     and a
     jr z, .noBass
@@ -122,6 +125,9 @@ PlayStep:
 .noBass:
 
     ; piano stab (CH2, arpeggiated chord)
+    ld a, [wMusicLayers]
+    and LAYER_KEYS
+    ret z                   ; no keys: no stabs, no lead
     ld a, [wStepStab]
     and a
     jr z, .noStab

@@ -33,8 +33,7 @@ LoadMsgs:
 StrDJs:         db "SIMA, PATER, JO~O", $FF
 StrStart:       db "START: 18:00", $FF
 StrYourTime:    db "YOUR TIME: ", $FF
-StrSeeYou:      db "  SEE YOU THERE!  ", $FF
-StrOsmCredit:   db "MAP: OPENSTREETMAP", $FF
+StrSeeYou:      db "SEE YOU THERE!", $FF
 
 ; --- text box ---------------------------------------------------------------
 DjTexts:
