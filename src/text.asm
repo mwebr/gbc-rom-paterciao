@@ -5,16 +5,19 @@
 SECTION "Strings", ROM0
 
 StrNeedCGB1:    db "GAME BOY COLOR", $FF
-StrNeedCGB2:    db "NEEDED!", $FF
+StrNeedCGB2:    db "BENÖTIGT!", $FF
 StrVenue:       db "@ BALLHAUS WEST", $FF
-StrDateTime:    db "THU 29.10.2026 18:00", $FF
+StrDateTime:    db "DO 29.10.2026 18:00", $FF
 StrDateEnd:     db "29.10.2026 18:00", $FF
-StrPressStart:  db "PRESS START", $FF
+StrPressStart:  db "START DRÜCKEN", $FF
 StrLineupTBA:   db "LINE UP: ???", $FF
 
-StrPickDjs:     db "PICK YOUR 3 DJS", $FF
-StrBooked3:     db "BOOKED: 0/3", $FF
-StrDigCrates:   db "DIG THE CRATES!", $FF
+StrPickDjs:     db "WÄHLE DEINE DJS!", $FF
+StrBooked3:     db "GEBUCHT: 0/4", $FF
+StrDjDots:      db "- - - - - -", $FF
+StrLockedIn:    db "   EINGELOGGT!    ", $FF
+StrNoStatus:    db "                  ", $FF
+StrDigCrates:   db "PLATTEN DIGGEN!", $FF
 StrJackpotLabels: db " HOUSE HOUSE HOUSE", $FF
 
 StrTechSetup:   db "TECH SETUP", $FF
@@ -22,46 +25,40 @@ StrDeckA:       db "DECK A", $FF
 StrDeckB:       db "DECK B", $FF
 StrScratches:   db "SCRATCHES: 0/8", $FF
 
-StrLoading:     db "LOADING PARTY...", $FF
+StrLoading:     db "PARTY LÄDT...", $FF
 ; 16 characters each
 LoadMsgs:
-    db "PUMPING TIRES...", $FF
-    db "WAXING THE FLOOR", $FF
-    db "SORTING VINYL...", $FF
-    db "CHILLING DRINKS.", $FF
-    db "READY. LET'S GO!", $FF
+    db "REIFEN AUFPUMPEN", $FF
+    db "BODEN WACHSEN...", $FF
+    db "VINYL SORTIEREN.", $FF
+    db "DRINKS KÜHLEN...", $FF
+    db "FERTIG. ABFAHRT!", $FF
 
-StrDJs:         db "SIMA + PATER JO~O", $FF
+StrDJs:         db "SIMA + PATER JO~O + DA:SYPODA", $FF
 StrStart:       db "START: 18:00", $FF
 
 ; --- text box ---------------------------------------------------------------
-DjTexts:
-    dw TxtSima, TxtGuetta, TxtPater, TxtTiesto, TxtJoao, TxtCalvin
-TxtSima:        db "SIMA IS BOOKED!", NL, "THE CROWD GOES", NL, "WILD! <3", EOT
-TxtGuetta:      db "DAVID GUETTA?", NL, "BOOKED OUT IN", NL, "IBIZA. SORRY!", EOT
-TxtPater:       db "PATER IS IN!", NL, "MAN BUN TIGHT,", NL, "DECKS READY.", EOT
-TxtTiesto:      db "TIESTO?", NL, "STUCK AT THE", NL, "AIRPORT. NEXT!", EOT
-TxtJoao:        db "JO~O IS IN!", NL, "SUNSHINE ON", NL, "THE DECKS!", EOT
-TxtCalvin:      db "CALVIN HARRIS?", NL, "ON A SUMMER TOUR.", NL, "MAYBE NEXT YEAR!", EOT
-TxtAlready:     db "ALREADY BOOKED!", NL, "PICK SOMEONE ELSE.", EOT
-TxtLineupDone:  db "LINE UP COMPLETE!", NL, "SIMA + PATER JO~O", NL, "WHAT A NIGHT!", EOT
+DjTexts:                        ; the real DJs just lock in, no dialog
+    dw 0, TxtGuetta, 0, TxtTiesto, 0, 0
+TxtGuetta:      db "DAVID GUETTA?", NL, "AUSGEBUCHT AUF", NL, "IBIZA. SORRY!", EOT
+TxtTiesto:      db "TIESTO? STECKT AM", NL, "FLUGHAFEN FEST.", NL, "NÄCHSTER!", EOT
+TxtLineupDone:  db "LINE-UP KOMPLETT!", NL, "SIMA + PATER JO~O", NL, "+ DA:SYPODA", EOT
 
-TxtCratesIntro: db "DIG THE CRATES!", NL, "PRESS A TO STOP", NL, "EACH CRATE.", EOT
-TxtJackpot:     db "JACKPOT!", NL, "3X HOUSE CLASSICS", NL, "IN THE BAG!", EOT
+TxtCratesIntro: db "PLATTEN DIGGEN!", NL, "DRÜCK A, UM JEDE", NL, "KISTE ZU STOPPEN.", EOT
+TxtJackpot:     db "JACKPOT!", NL, "3X HOUSE-KLASSIKER", NL, "IN DER TASCHE!", EOT
 
-TxtIntro:       db "KARLSRUHE HBF.", NL, "RIDE TO BALLHAUS", NL, "WEST, HIRSCHSTR 18", PG
-                db "DOORS OPEN 18:00.", NL, "FOLLOW THE ARROW!", EOT
-TxtDoor:        db "BALLHAUS WEST!", NL, "BOUNCER: YOU'RE ON", NL, "THE LIST. COME IN!", EOT
+TxtIntro:       db "KARLSRUHE HBF.", NL, "FAHR ZUM BALLHAUS", NL, "WEST, HIRSCHSTR 18", PG
+                db "EINLASS 18:00.", NL, "FOLGE DEM PFEIL!", EOT
+TxtDoor:        db "BALLHAUS WEST!", NL, "TÜRSTEHER: LISTE?", NL, "PASST. KOMM REIN!", EOT
 
-TxtClubIntro:   db "THE CROWD IS", NL, "WAITING! GO TO THE", NL, "DECKS FOR THE", PG
-                db "TECH SETUP.", EOT
-TxtAtDecks:     db "LET'S CHECK THE", NL, "SOUND SYSTEM...", EOT
-TxtTechIntro:   db "TECH SETUP!", NL, "SCRATCH 8 TIMES", NL, "WITH <LT> AND <RT>.", EOT
-TxtScratchDone: db "SOUND CHECK: OK!", NL, "THE PARTY CAN", NL, "START. ENKA!", EOT
+TxtClubIntro:   db "DIE MENGE WARTET!", NL, "AB ZU DEN DECKS", NL, "ZUM TECH SETUP.", EOT
+TxtAtDecks:     db "CHECKEN WIR MAL", NL, "DIE ANLAGE...", EOT
+TxtTechIntro:   db "TECH SETUP!", NL, "8X SCRATCHEN MIT", NL, "<LT> UND <RT>.", EOT
+TxtScratchDone: db "SOUNDCHECK: OK!", NL, "DIE PARTY KANN", NL, "LOSGEHEN. ENKA!", EOT
 
 PUSHC
 SETCHARMAP big
 BigEnka:        db "ENKA", $FF
 MarqText:
-    db "PRESS START", "            ", $FF
+    db "START DRÜCKEN", "            ", $FF
 POPC

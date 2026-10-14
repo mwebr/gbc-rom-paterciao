@@ -1,12 +1,12 @@
 # ENKA @ Ballhaus West — Game Boy Color promo
 
 Promo cartridge for ENKA @ Ballhaus West (Hirschstraße 18, Karlsruhe), Thursday 29.10.2026, 18:00.
-64 KiB ROM, MBC5, Game Boy Color only: `enka.gbc`. Classic house soundtrack from boot.
+64 KiB ROM, MBC5, Game Boy Color only: `enka.gbc`. Classic house soundtrack from boot. In-game text is German.
 
 ## How it plays (about a minute)
 
-1. **Title** — animated ENKA logo, PRESS START.
-2. **Book your DJs** — pick three from six avatars. Sima, Pater and João say yes; the big names are busy.
+1. **Title** — animated ENKA logo, START DRÜCKEN.
+2. **Choose your DJs** — fighting-game style select: one big portrait at a time, left/right slides to the next. Pick four of six. Sima, Pater, João and da:sypoda lock in; the big names are busy.
 3. **Dig the crates** — a record slot machine; stop the three crates with A. Jackpot: house classics.
 4. **Loading party...**
 5. **Bike ride** — from Karlsruhe Hauptbahnhof through the real streets (OpenStreetMap) to Ballhaus West,
@@ -35,7 +35,7 @@ Or point `RGBDS=/path/to/bin/` at an existing install.
 - `tools/osmmap.py`, `tools/owbuild.py`, `tools/owart.py` — OpenStreetMap extract → 16×16 block map in the
   style of the Game Boy Color Pokémon games (original tiles)
 - `tools/ending.py` — the ending illustration
-- `tools/art2.py` — walking sprites, trams/trains, club interior, DJ avatars, record sleeves
+- `tools/art2.py` — walking sprites, trams/trains, club interior, DJ portraits, record sleeves
 - `tools/osm/` — OpenStreetMap extract of the area
 
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL).

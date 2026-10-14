@@ -227,7 +227,7 @@ NotCGB:
     ld d, 0
     call MemFill
     DRAW StrNeedCGB1, 7, 3
-    DRAW StrNeedCGB2, 9, 6
+    DRAW StrNeedCGB2, 9, 5
     ld a, %11100100
     ldh [rBGP], a
     ld a, %10010001
@@ -289,6 +289,11 @@ VBlankHandler:
     ld [wObjPalDirty], a
     call UploadObjPalettes
 .noPal:
+
+    ; DJ screen: stream a portrait into VRAM bank 1, 256 bytes per frame
+    ld a, [wDjLoad]
+    and a
+    call nz, DjLoadChunk
 
 .registers:
     ld a, [wWinY]
@@ -563,11 +568,6 @@ LoadOwTiles:
     ld bc, OwTilesEnd - OwTiles
     jr LoadBank1
 
-LoadAvatars:
-    ld a, 4
-    ld hl, AvatarTiles
-    ld bc, AvatarTilesEnd - AvatarTiles
-    jr LoadBank1Set
 LoadCrates:
     ld a, 5
     ld hl, CrateTiles
@@ -1251,6 +1251,7 @@ ScreenReset:
     ld [wRedraw], a
     ld [wStreamMode], a
     ld [wNoFlash], a
+    ld [wDjLoad], a
     ld a, WIN_Y
     ld [wWinY], a
     ld a, 1
@@ -1583,51 +1584,128 @@ QueueBlock4:
     ret
 
 ; ==========================================================================
-; Setup 1/2: book three DJs (portrait grid, 3 x 2)
+; Setup 1/2: choose four DJs, fighting-game style. One big portrait at a time;
+; left/right slides the next one in. The two portrait slots sit 16 map columns
+; apart in VRAM bank 1 (tiles 0-63 and 64-127), so a slide is just SCX of the
+; card band moving by 128 pixels while the hidden slot is reloaded.
 ; ==========================================================================
 DEF NUM_DJS  EQU 6
-DEF DJS_REAL EQU %010101        ; SIMA (0), PATER (2), JOAO (4)
+DEF DJS_REAL EQU %110101        ; SIMA (0), PATER (2), JOAO (4), DA:SYPODA (5)
+DEF DJ_BAND_Y    EQU 16         ; card band: frame rows 2-11
+DEF DJ_BAND_H    EQU 80
+DEF DJ_SLIDE_LEN EQU 9
+DEF DJ_FLASH_LEN EQU 24
+DEF DJ_DOTS      EQU 15         ; map row of the line-up dots
 
 DjsInit:
-    call LoadAvatars
+    ld a, $FF               ; bank 1 tiles get overwritten by the portraits
+    ld [wBank1Set], a
     ld a, 1
     ld [wNoFlash], a
     ld hl, DjPalettes
     ld de, wBasePal
     ld bc, 128
     call MemCopy
-    DRAW StrPickDjs, 1, 3, 7, 14
-    DRAW StrBooked3, 16, 5
-    ld c, 0
-.portrait:
-    push bc
-    ld a, c
-    ld hl, DjCellMap
-    call GetWord            ; bc = map address
-    ld d, b
-    ld e, c
-    pop bc
-    push bc
-    ld a, c
-    swap a                  ; first tile = index * 16
-    ld b, a
-    ld a, c
+    DRAW StrPickDjs, 1, 2, 7, 16
+    DRAW StrDjDots, DJ_DOTS, 4
+    DRAW StrBooked3, 16, 4
+    ld a, 7
+    ld de, _SCRN0 + 13 * 32 + 1
+    ld bc, (18 << 8) | 1
+    call SetAttrRect
+    ; two cards: slot A in columns 5-14, slot B in columns 21-30
+    ld de, _SCRN0 + 2 * 32 + 5
+    ld b, 0
+    call DrawCard
+    ld de, _SCRN0 + 2 * 32 + 21
+    ld b, 64
+    call DrawCard
+    ld a, $08 | 1
+    ld de, _SCRN0 + 3 * 32 + 6
+    ld bc, (8 << 8) | 3
+    call SetAttrRect
+    ld a, $08 | 2
+    ld de, _SCRN0 + 6 * 32 + 6
+    ld bc, (8 << 8) | 5
+    call SetAttrRect
+    ld a, $08 | 3
+    ld de, _SCRN0 + 3 * 32 + 22
+    ld bc, (8 << 8) | 3
+    call SetAttrRect
+    ld a, $08 | 4
+    ld de, _SCRN0 + 6 * 32 + 22
+    ld bc, (8 << 8) | 5
+    call SetAttrRect
+    ; first portrait straight into slot A
+    ld a, BANK(PortraitTiles)
+    ld [rROMB0], a
+    ld a, 1
+    ldh [rVBK], a
+    ld hl, PortraitTiles
+    ld de, _VRAM
+    ld bc, 64 * 16
+    call MemCopy
+    xor a
+    ldh [rVBK], a
     inc a
-    or $08                  ; palette 1-6, VRAM bank 1
-    ld c, a
-    call DrawBlock4
-    pop bc
-    inc c
-    ld a, c
-    cp NUM_DJS
-    jr nz, .portrait
+    ld [rROMB0], a
     xor a
     ld [wDjSel], a
     ld [wDjMask], a
     ld [wDjsDone], a
+    ld [wDjFlash], a
+    ld [wDjStatusReq], a
+    ld [wDjSlot], a
+    ld [wDjScx], a
+    ld [wDjSlide], a
     call DjNameText
-    ld de, _SCRN0 + 14 * 32 + 1
+    ld de, _SCRN0 + 12 * 32 + 1
     jp DrawText
+
+; de = map address of the frame's top-left corner, b = first portrait tile (LCD off)
+DrawCard:
+    push de
+    ld h, d
+    ld l, e
+    ld a, TILE_TB_TL
+    ld [hl+], a
+    ld c, b
+    ld b, 8
+    ld a, TILE_TB_T
+    call FillBytes
+    ld a, TILE_TB_TR
+    ld [hl], a
+    ld b, c
+    ld c, 8
+.row:
+    pop de
+    NEXT_ROW_DE
+    push de
+    ld h, d
+    ld l, e
+    ld a, TILE_TB_L
+    ld [hl+], a
+    REPT 8
+        ld a, b
+        ld [hl+], a
+        inc b
+    ENDR
+    ld a, TILE_TB_R
+    ld [hl], a
+    dec c
+    jr nz, .row
+    pop de
+    NEXT_ROW_DE
+    ld h, d
+    ld l, e
+    ld a, TILE_TB_BL
+    ld [hl+], a
+    ld b, 8
+    ld a, TILE_TB_B
+    call FillBytes
+    ld a, TILE_TB_BR
+    ld [hl], a
+    ret
 
 ; -> hl = padded name of the selected DJ (19 bytes each)
 DjNameText:
@@ -1641,8 +1719,28 @@ DjNameText:
     ADD_HL_A
     ret
 
+; -> hl = the two palettes of the selected DJ (16 bytes each)
+DjPortraitPal:
+    ld a, [wDjSel]
+    swap a
+    ld hl, DjPortraitPals
+    ADD_HL_A
+    ret
+
+; -> de = the two palettes of slot a in wBasePal
+DjSlotPal:
+    swap a                  ; slot * 16
+    add a, 8                ; palettes 1-2 or 3-4
+    ld e, a
+    ld d, HIGH(wBasePal)
+    ret
+
 DjsUpdate:
     call CommonUpdate
+    ld a, [wDjScx]          ; the card band scrolls on its own
+    ld hl, wScxTable + DJ_BAND_Y
+    ld b, DJ_BAND_H
+    call FillBytes
     call TextStep
     jr z, .input
     ld a, [wTbDone]
@@ -1652,67 +1750,69 @@ DjsUpdate:
     ld [wTbDone], a
     ld a, [wDjsDone]
     and a
-    jr z, .notDone
+    jp z, .draw
     ld a, SCR_CRATES
     jp RequestScreen
-.notDone:
-    ld a, [wDjMask]
-    cp DJS_REAL
-    jp nz, .draw
-    ld a, 1
-    ld [wDjsDone], a
-    ld hl, TxtLineupDone
-    call OpenText
-    jp .draw
 
 .input:
+    ld a, [wDjSlide]        ; no input while a portrait slides or flashes
+    ld b, a
+    ld a, [wDjFlash]
+    or b
+    jp nz, .draw
     ldh a, [hJoyPressed]
     ld b, a
-    ld a, [wDjSel]
-    ld c, a
+    ld e, 1
     bit PADB_RIGHT, b
-    jr z, .notRight
-    cp 2
-    jr z, .notRight
-    cp 5
-    jr z, .notRight
-    inc c
-.notRight:
+    jr nz, .move
+    ld e, -1
     bit PADB_LEFT, b
-    jr z, .notLeft
-    and a
-    jr z, .notLeft
-    cp 3
-    jr z, .notLeft
-    dec c
-.notLeft:
-    bit PADB_DOWN, b
-    jr z, .notDown
-    cp 3
-    jr nc, .notDown
-    add a, 3
-    ld c, a
-.notDown:
-    bit PADB_UP, b
-    jr z, .notUp
-    cp 3
-    jr c, .notUp
-    sub 3
-    ld c, a
-.notUp:
-    ld a, [wDjSel]
-    cp c
     jr z, .noMove
-    ld a, c
+.move:
+    ld a, e
+    ld [wDjDir], a
+    ld a, [wDjSel]
+    add a, e
+    cp NUM_DJS
+    jr c, .inRange
+    ld a, NUM_DJS - 1       ; -1 wraps to the last one
+    bit 7, e
+    jr nz, .inRange
+    xor a
+.inRange:
     ld [wDjSel], a
     call SfxMove
-    call DjNameText
-    ld de, _SCRN0 + 14 * 32 + 1
-    call QueueText
+    ; next portrait into the hidden slot: palettes now, tiles over the next frames
+    ld a, [wDjSlot]
+    xor 1
+    push af
+    call DjSlotPal
+    call DjPortraitPal
+    ld bc, 16
+    call MemCopy
+    ld a, [wDjSel]
+    add a, a
+    add a, a                ; * 1024 = high byte * 4
+    add a, HIGH(PortraitTiles)
+    ld [wDjLoadSrc + 1], a
+    ld a, LOW(PortraitTiles)
+    ld [wDjLoadSrc], a
+    pop af
+    add a, a
+    add a, a                ; slot * 1024
+    ld [wDjLoadDst + 1], a
+    xor a
+    ld [wDjLoadDst], a
+    ld a, 4
+    ld [wDjLoad], a
+    ld a, DJ_SLIDE_LEN
+    ld [wDjSlide], a
+    jp .draw
+
 .noMove:
-    ldh a, [hJoyPressed]
+    ld a, b
     and (1 << PADB_A) | (1 << PADB_START)
-    jr z, .draw
+    jp z, .draw
     call SfxSelect
     ld a, [wDjSel]
     ld c, a
@@ -1729,131 +1829,248 @@ DjsUpdate:
     jr z, .reply            ; the big names politely decline
     ld a, [wDjMask]
     and b
-    ld hl, TxtAlready
-    jr nz, .say
+    jr z, .lockIn
+    call SfxBack            ; already in the line-up
+    jr .draw
+.lockIn:
+    ld a, DJ_FLASH_LEN      ; flash the portrait, no dialog
+    ld [wDjFlash], a
+    ld a, 1
+    ld [wDjStatusReq], a
     ld a, [wDjMask]
     or b
     ld [wDjMask], a
     ; booked counter
     ld c, CH_0
-    ld b, 3
+    ld b, NUM_DJS
 .count:
     rrca
     jr nc, .skipBit
     inc c
 .skipBit:
-    rrca
     dec b
     jr nz, .count
     ld a, c
     ld de, _SCRN0 + 16 * 32 + 13
     call QueueWrite
+    ld a, [wDjSel]          ; the heart sprite replaces the dot
+    add a, a
+    add a, 4
+    ld e, a
+    ld d, HIGH(_SCRN0 + DJ_DOTS * 32)
+    ld a, e
+    add a, LOW(_SCRN0 + DJ_DOTS * 32)
+    ld e, a
+    xor a
+    call QueueWrite
+    jr .draw
 .reply:
     ld a, [wDjSel]
     ld hl, DjTexts
     call GetWord
     ld h, b
     ld l, c
-.say:
     call OpenText
 
 .draw:
-    ; selection frame: 4 corner sprites (slots 0-3), blinking
+    call DjSlideStep
+    call DjStatusStep
+    call DjFlashStep
+    ; sprites: 0 pointer over the dots, 1-2 arrows, 3-8 hearts
+    ld hl, wShadowOAM
+    ld a, DJ_DOTS * 8 + 16 - 8
+    ld [hl+], a
     ld a, [wDjSel]
     add a, a
-    ld hl, DjCellXY
-    ADD_HL_A
-    ld a, [hl+]
-    ld c, a                 ; screen x of the portrait
-    ld b, [hl]              ; screen y
-    ld hl, wShadowOAM
-    ld d, 0                 ; corner: x offset, y offset, attr
-    ld e, 4
-    push hl
-    ld hl, CornerTab
-.corner:
-    ld a, [hl+]
-    add a, c
-    ld [wTmp], a            ; x
-    ld a, [hl+]
-    add a, b
-    ld [wTmp + 1], a        ; y
-    ld a, [hl+]
-    ld [wTmp + 2], a        ; attr
-    push hl
-    ld hl, wShadowOAM
-    ld a, d
-    ADD_HL_A
-    ld a, [wTmp + 1]
-    ld [hl+], a
-    ld a, [wTmp]
-    ld [hl+], a
-    ld a, SPR_CORNER
-    ld [hl+], a
-    ld a, [wTmp + 2]
-    ld [hl], a
-    pop hl
-    ld a, d
     add a, 4
-    ld d, a
-    dec e
-    jr nz, .corner
-    pop hl
-    ld a, 16
-    ADD_HL_A
-.hearts:
-    ; hearts on booked DJs (slots 4-9)
+    add a, a
+    add a, a
+    add a, a
+    add a, 8
+    ld [hl+], a
+    ld a, SPR_POINT
+    ld [hl+], a
+    xor a
+    ld [hl+], a
+    ld a, [wFrame]          ; blinking arrows beside the card
+    and 16
+    ld a, DJ_BAND_Y + 40 - 4 + 16
+    jr z, .arrowsOn
+    xor a
+.arrowsOn:
+    ld b, a
+    ld [hl+], a
+    ld a, 24 + 8
+    ld [hl+], a
+    ld a, SPR_ARROW_L
+    ld [hl+], a
+    ld a, 1
+    ld [hl+], a
+    ld a, b
+    ld [hl+], a
+    ld a, 128 + 8
+    ld [hl+], a
+    ld a, SPR_ARROW_R
+    ld [hl+], a
+    ld a, 1
+    ld [hl+], a
     ld a, [wDjMask]
     ld d, a
-    ld e, 0
+    ld e, 4 * 8 + 8         ; x of the first dot
 .heart:
     rr d
-    jr nc, .noHeart
-    push hl
-    ld a, e
-    add a, a
-    ld hl, DjCellXY
-    ADD_HL_A
-    ld a, [hl+]
-    add a, 24 + 8
-    ld c, a
-    ld a, [hl]
-    add a, 16 - 4
-    pop hl
+    ld a, DJ_DOTS * 8 + 16
+    jr c, .heartOn
+    xor a
+.heartOn:
     ld [hl+], a
-    ld a, c
+    ld a, e
     ld [hl+], a
     ld a, SPR_HEART
     ld [hl+], a
     ld a, 2
     ld [hl+], a
-    jr .nextHeart
-.noHeart:
-    xor a
-    ld [hl+], a
-    ld [hl+], a
-    ld [hl+], a
-    ld [hl+], a
-.nextHeart:
-    inc e
     ld a, e
-    cp NUM_DJS
+    add a, 16
+    ld e, a
+    cp (4 + 2 * NUM_DJS) * 8 + 8
     jr nz, .heart
     ret
 
-; portrait cells: map address, screen position
-DjCellMap:
-    dw _SCRN0 + 3 * 32 + 2, _SCRN0 + 3 * 32 + 8, _SCRN0 + 3 * 32 + 14
-    dw _SCRN0 + 9 * 32 + 2, _SCRN0 + 9 * 32 + 8, _SCRN0 + 9 * 32 + 14
-DjCellXY:
-    db 16, 24, 64, 24, 112, 24
-    db 16, 72, 64, 72, 112, 72
-; x, y offsets (OAM space) and flips for the 4 frame corners
-CornerTab:
-    db 8 - 4, 16 - 4, 0
-    db 8 + 28, 16 - 4, $20
-    db 8 - 4, 16 + 28 - 8, $40
-    db 8 + 28, 16 + 28 - 8, $60
+; VBlank: next 256 bytes of the portrait into VRAM bank 1 (general-purpose DMA)
+DjLoadChunk:
+    dec a
+    ld [wDjLoad], a
+    ld a, BANK(PortraitTiles)
+    ld [rROMB0], a
+    ld a, 1
+    ldh [rVBK], a
+    ld hl, wDjLoadSrc
+    ld a, [hl+]
+    ldh [rHDMA2], a
+    ld a, [hl]
+    ldh [rHDMA1], a
+    inc [hl]                ; next 256 bytes
+    inc hl
+    ld a, [hl+]             ; wDjLoadDst
+    ldh [rHDMA4], a
+    ld a, [hl]
+    ldh [rHDMA3], a
+    inc [hl]
+    ld a, 256 / 16 - 1
+    ldh [rHDMA5], a
+    xor a
+    ldh [rVBK], a
+    inc a
+    ld [rROMB0], a
+    ret
+
+; once the hidden slot is loaded: slide the band 128 pixels, ease out
+DjSlideStep:
+    ld a, [wDjLoad]
+    and a
+    ret nz
+    ld a, [wDjSlide]
+    and a
+    ret z
+    cp DJ_SLIDE_LEN
+    jr nz, .step
+    call DjNameText         ; first step: new name and status
+    ld de, _SCRN0 + 12 * 32 + 1
+    call QueueText
+    ld a, 1
+    ld [wDjStatusReq], a
+    ld a, DJ_SLIDE_LEN
+.step:
+    dec a
+    ld [wDjSlide], a
+    ld hl, DjSlideTab
+    ADD_HL_A
+    ld b, [hl]
+    ld a, [wDjDir]
+    bit 7, a
+    ld a, [wDjScx]
+    jr nz, .left
+    add a, b
+    jr .moved
+.left:
+    sub b
+.moved:
+    ld [wDjScx], a
+    ld a, [wDjSlide]
+    and a
+    ret nz
+    ld a, [wDjSlot]
+    xor 1
+    ld [wDjSlot], a
+    ret
+
+DjSlideTab:                     ; read backwards, sums to 128
+    db 6, 8, 10, 12, 14, 16, 18, 20, 24
+
+; "EINGELOGGT!" under the name of the selected DJ (once the queue has room)
+DjStatusStep:
+    ld a, [wDjStatusReq]
+    and a
+    ret z
+    ld a, [wQueueLen]
+    and a
+    ret nz
+    ld [wDjStatusReq], a
+    ld a, [wDjSel]
+    ld c, a
+    ld a, [wDjMask]
+    inc c
+.shift:
+    dec c
+    jr z, .gotIt
+    rrca
+    jr .shift
+.gotIt:
+    ld hl, StrLockedIn
+    rrca
+    jr c, .show
+    ld hl, StrNoStatus
+.show:
+    ld de, _SCRN0 + 13 * 32 + 1
+    jp QueueText
+
+; lock-in flash: the portrait blinks white, then the line-up text when complete
+DjFlashStep:
+    ld a, [wDjFlash]
+    and a
+    jr z, .idle
+    dec a
+    ld [wDjFlash], a
+    ld b, a
+    ld a, [wDjSlot]
+    call DjSlotPal
+    ld hl, DjFlashPal
+    ld a, b
+    and 4
+    jr nz, .copy
+    call DjPortraitPal
+.copy:
+    ld bc, 16
+    jp MemCopy
+.idle:
+    ld a, [wDjsDone]
+    and a
+    ret nz
+    ld a, [wDjMask]
+    cp DJS_REAL
+    ret nz
+    ld a, [wTbState]
+    and a
+    ret nz
+    inc a
+    ld [wDjsDone], a
+    ld hl, TxtLineupDone
+    jp OpenText
+
+DjFlashPal:
+    dw $7FFF, $0C42, $7FFF, $7FFF
+    dw $7FFF, $0C42, $7FFF, $7FFF
 
 ; ==========================================================================
 ; Setup 2/2: dig the record crates (slot machine)
@@ -2496,7 +2713,7 @@ LoadingInit:
     ld a, [wMusicOn]        ; decks may have been stopped: the party needs music
     and a
     call z, MusicRestart
-    DRAW StrLoading, 6, 2, 4, 16
+    DRAW StrLoading, 6, 3, 4, 16
     ld hl, _SCRN0 + 9 * 32 + 2
     ld b, 16
     ld a, TILE_BAR_EMPTY
@@ -4512,6 +4729,15 @@ wPlayTime:   dw
 wDjSel:      db
 wDjMask:     db
 wDjsDone:    db
+wDjFlash:    db
+wDjStatusReq: db
+wDjSlot:     db                 ; portrait slot on screen (0 / 1)
+wDjScx:      db                 ; SCX of the card band
+wDjSlide:    db                 ; slide steps left
+wDjDir:      db                 ; +1 / -1
+wDjLoad:     db                 ; 256-byte chunks left to stream
+wDjLoadSrc:  dw                 ; (DjLoadChunk reads src, then dst)
+wDjLoadDst:  dw
 wDecks:      ds 2 * 4           ; running, velocity, angle lo, angle hi
 wDeckSel:    db
 wScratchOn:  db
